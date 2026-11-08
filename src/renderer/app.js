@@ -63,6 +63,9 @@ function canInstall(plugin) {
   return plugin.status !== 'planned';
 }
 
+/** Recurso: aba do próprio app, que não depende de um aparelho conectado (ex.: Sons). As outras são de aparelhos. */
+const isFeature = (plugin) => plugin.kind === 'feature';
+
 /** Ícone do Início: 4 quadradinhos, como os cartões dos aparelhos. */
 function overviewIcon() {
   const NS = 'http://www.w3.org/2000/svg';
@@ -203,6 +206,57 @@ function scanLine(nothingFound) {
     scanButton(), '.');
 }
 
+/**
+ * Um passo do "como funciona" das boas-vindas. `state`: 'done' (feito, com ✓),
+ * 'current' (o que fazer agora, em destaque) ou 'todo' (o que vem depois).
+ */
+function welcomeStep(n, state, title, text) {
+  return h('li', { class: `welcome-step ${state}`, 'aria-current': state === 'current' ? 'step' : null },
+    h('span', { class: 'welcome-step-n', 'aria-hidden': 'true' }, state === 'done' ? '✓' : String(n)),
+    h('div', {}, h('strong', {}, title), h('p', { class: 'muted small' }, text)));
+}
+
+/** Cartão de aba para ativar nas boas-vindas: ícone, nome, aparelhos achados (ou o que a aba faz) e o botão. */
+function welcomePick(p, i) {
+  const names = deviceNames(p);
+  return h('div', { class: 'card welcome-pick', dataset: { plugin: p.id }, style: `--i:${i}` },
+    h('div', { class: 'welcome-pick-head' },
+      h('span', { class: 'welcome-pick-art', 'aria-hidden': 'true' }, p.icon ? p.icon() : p.name.charAt(0)),
+      h('div', {},
+        h('h3', {}, p.name),
+        h('span', { class: 'pill' + (names.length ? ' found' : '') }, names.length ? 'Conectado' : 'Recurso'))),
+    names.length
+      ? h('ul', { class: 'welcome-pick-devices' }, names.map((n) => h('li', {}, n)))
+      : h('p', { class: 'muted small' }, p.tagline),
+    canInstall(p)
+      ? button(`Ativar aba ${p.name}`, () => extensions.install(p.id))
+      : h('p', { class: 'muted small' }, 'Aba em breve.'));
+}
+
+/**
+ * Cartões de abas para ativar: aparelhos e recursos. Com os dois, cada grupo tem
+ * o seu título; com um só, vai a grade direto.
+ */
+function pickGrid(devices, features) {
+  const grid = (list, start) => h('div', { class: 'welcome-pick-grid' }, list.map((p, i) => welcomePick(p, start + i)));
+  if (!devices.length || !features.length) return grid([...devices, ...features], 0);
+  return [
+    h('h4', { class: 'pick-group' }, 'Aparelhos'), grid(devices, 0),
+    h('h4', { class: 'pick-group' }, 'Recursos'), grid(features, devices.length),
+  ];
+}
+
+// A entrada animada das boas-vindas acontece uma vez só: o Início é redesenhado
+// sempre que um aparelho conecta ou desconecta, e não deve piscar a cada vez.
+let welcomeAnimated = false;
+let overviewAnimated = false;
+
+/** Ativa várias abas de uma vez e volta para o Início, que vira o resumo dos aparelhos. */
+function installAll(list) {
+  for (const p of list) extensions.install(p.id);
+  show('overview');
+}
+
 function renderOverview(container) {
   const installed = installedPlugins().filter((p) => p.status !== 'tool');
   // Marcas detectadas que ainda não têm suporte adicionado.
@@ -210,81 +264,160 @@ function renderOverview(container) {
   const firstRun = installed.length === 0;
   const nothingFound = suggestions.length === 0 && installed.every((p) => deviceNames(p).length === 0);
 
-  const suggestionCards = suggestions.length ? h('section', { class: 'suggestions' },
-    h('h3', {}, firstRun ? 'Encontramos estes aparelhos' : 'Detectados'),
-    h('div', { class: 'grid' }, suggestions.map((p) => h('div', { class: 'card suggestion', dataset: { plugin: p.id } },
-      h('h3', {}, p.name),
-      h('ul', {}, deviceNames(p).map((n) => h('li', {}, n))),
-      canInstall(p)
-        ? button(`Ativar aba ${p.name}`, () => extensions.install(p.id))
-        : h('p', { class: 'muted small' }, 'Aba em breve.'))))) : null;
-
   // Algum aparelho não apareceu sozinho? Só então o botão de procurar ganha destaque.
   const scanHint = scanLine(nothingFound);
 
   if (firstRun) {
+    // Abas que não dependem de um aparelho conectado (como a Sons) entram junto
+    // com as dos aparelhos achados, depois deles.
+    const extras = plugins.filter((p) => !extensions.has(p.id) && isFeature(p) && canInstall(p));
+    const picks = [...suggestions, ...extras];
+    const found = suggestions.filter(canInstall);
+    const deviceCount = suggestions.reduce((n, p) => n + deviceNames(p).length, 0);
+    const animate = !welcomeAnimated;
+    welcomeAnimated = true;
     clear(container,
-      h('section', { class: 'welcome' },
-        h('h2', {}, 'Bem-vindo ao UniHub'),
-        h('p', { class: 'muted' }, 'Um app só para configurar periféricos de várias marcas. Ative as abas dos aparelhos que você usa e cada uma aparece no menu.')),
-      !hid.available ? h('div', { class: 'error' }, 'WebHID indisponível neste ambiente.') : null,
-      suggestionCards,
-      h('div', { class: 'welcome-actions' },
-        button(suggestions.length ? 'Ver todas as abas' : 'Adicionar aba', openDialog, { kind: suggestions.length ? 'secondary' : 'primary' })),
-      scanHint,
+      h('div', { class: 'welcome-page' + (animate ? ' animate' : '') },
+        h('section', { class: 'welcome' },
+          h('h2', {}, 'Bem-vindo ao UniHub'),
+          h('p', { class: 'muted' }, 'Controles, fones e teclados de várias marcas num lugar só, sem instalar o programa de cada fabricante.'),
+          h('div', { class: 'welcome-actions' },
+            found.length > 1
+              ? button(`Ativar as ${found.length} abas dos aparelhos encontrados`, () => installAll(found), { kind: 'primary' })
+              : null,
+            button(picks.length ? 'Ver todas as abas' : 'Adicionar aba', openDialog, { kind: found.length > 1 || picks.length ? 'secondary' : 'primary' }))),
+        // Os passos acompanham o que já aconteceu: com aparelhos achados, o 1 fica
+        // feito e o 2 é o que fazer agora.
+        h('ol', { class: 'welcome-steps' },
+          deviceCount
+            ? welcomeStep(1, 'done', 'Aparelhos conectados', deviceCount === 1 ? '1 aparelho encontrado, por cabo, dongle ou Bluetooth.' : `${deviceCount} aparelhos encontrados, por cabo, dongle ou Bluetooth.`)
+            : welcomeStep(1, 'current', 'Conecte seus aparelhos', 'Por cabo, dongle ou Bluetooth. O UniHub reconhece sozinho e eles aparecem aqui.'),
+          welcomeStep(2, deviceCount ? 'current' : 'todo', 'Ative as abas que quiser', 'Cada tipo de aparelho tem a sua aba. Só aparecem no menu as que você ativar, e dá para mudar depois.'),
+          welcomeStep(3, 'todo', 'Veja e ajuste tudo aqui', 'Bateria, testes e opções de cada aparelho. O Início vira o resumo dos seus periféricos.')),
+        !hid.available ? h('div', { class: 'error' }, 'WebHID indisponível neste ambiente.') : null,
+        picks.length ? h('section', { class: 'welcome-picks' },
+          h('h3', {}, 'Escolha suas abas'),
+          pickGrid(suggestions, extras)) : null,
+        scanHint),
     );
     return;
   }
 
   const cards = installed.flatMap(deviceCards);
+  // Abas que ainda dá para ativar: as dos aparelhos achados e as que não
+  // dependem de aparelho (como a Sons), no mesmo formato das boas-vindas.
+  const extras = plugins.filter((p) => !extensions.has(p.id) && isFeature(p) && canInstall(p));
+  const picks = [...suggestions, ...extras];
+  const found = suggestions.filter(canInstall);
+  const animate = !overviewAnimated;
+  overviewAnimated = true;
   clear(container,
-    h('div', { class: 'overview-head' }, h('h2', {}, 'Seus periféricos')),
+    h('div', { class: 'overview-head' },
+      h('div', {},
+        h('h2', {}, 'Seus periféricos'),
+        h('p', { class: 'muted small overview-sub' }, cards.length === 0
+          ? 'Nenhum aparelho conectado agora.'
+          : `${cards.length === 1 ? '1 aparelho conectado' : `${cards.length} aparelhos conectados`}. Clique num cartão para abrir a aba dele.`)),
+      button('Gerenciar abas', openDialog)),
     !hid.available ? h('div', { class: 'error' }, 'WebHID indisponível neste ambiente.') : null,
     cards.length
-      ? h('div', { class: 'home-grid' }, cards)
+      ? h('div', { class: 'home-grid' + (animate ? ' animate' : '') }, cards.map((c, i) => { c.style.setProperty('--i', i); return c; }))
       : h('div', { class: 'empty' }, 'Nenhum aparelho conectado. Ligue um controle, fone ou teclado e ele aparece aqui.'),
-    suggestionCards,
+    picks.length ? h('section', { class: 'welcome-picks more-tabs' + (animate ? ' animate' : '') },
+      h('div', { class: 'more-tabs-head' },
+        h('div', {},
+          h('h3', {}, 'Adicionar mais abas'),
+          h('p', { class: 'muted small' }, found.length
+            ? 'Encontramos aparelhos que ainda não têm a aba ativada.'
+            : 'Outras abas que você pode usar.')),
+        found.length > 1 ? button(`Ativar as ${found.length} abas dos aparelhos encontrados`, () => installAll(found), { kind: 'primary' }) : null),
+      pickGrid(suggestions, extras)) : null,
     scanHint,
   );
 }
 
+/**
+ * Uma aba na janela Abas: ícone na cor da aba, nome, o que ela faz, os aparelhos
+ * conectados agora e uma chave para pôr ou tirar do menu. A linha inteira liga e
+ * desliga (é um <label>), não só a chave.
+ */
 function extensionItem(p) {
   const names = deviceNames(p);
   const installed = extensions.has(p.id);
-  return h('div', { class: 'ext-item' + (installed ? ' installed' : ''), dataset: { plugin: p.id } },
-    h('div', { class: 'ext-info' },
-      h('strong', {}, p.name, ' ', h('span', { class: `pill ${p.status}` }, STATUS_LABEL[p.status])),
+  const available = canInstall(p);
+  const info = [
+    h('span', { class: 'ext-art', 'aria-hidden': 'true' }, p.icon ? p.icon() : p.name.charAt(0)),
+    h('span', { class: 'ext-info' },
+      h('span', { class: 'ext-title' },
+        h('strong', {}, p.name),
+        STATUS_LABEL[p.status] ? h('span', { class: `pill ${p.status}` }, STATUS_LABEL[p.status]) : null),
       h('span', { class: 'muted small' }, p.tagline),
       p.status !== 'tool' && names.length
-        ? h('span', { class: 'small detected' }, `Conectado agora: ${names.join(', ')}`) : null),
-    !canInstall(p)
-      ? button('Em breve', null, { disabled: true })
-      : installed
-        ? button('Remover', () => extensions.uninstall(p.id))
-        : button('Adicionar', () => extensions.install(p.id)));
+        ? h('span', { class: 'small detected' }, h('span', { class: 'ext-dot', 'aria-hidden': 'true' }), `Conectado agora: ${names.join(', ')}`) : null),
+  ];
+  if (!available) return h('div', { class: 'ext-item soon', dataset: { plugin: p.id } }, ...info);
+  return h('label', { class: 'ext-item' + (installed ? ' installed' : ''), dataset: { plugin: p.id } },
+    ...info,
+    h('input', {
+      type: 'checkbox', class: 'switch', checked: installed,
+      'aria-label': `Mostrar a aba ${p.name} no menu`,
+      onchange: (e) => (e.target.checked ? extensions.install(p.id) : extensions.uninstall(p.id)),
+    }));
 }
 
 function renderDialog() {
-  // Abas com aparelho conectado primeiro; ferramentas de desenvolvedor no fim, em "Avançado".
-  const brands = plugins.filter((p) => p.status !== 'tool')
-    .sort((a, b) => Number(deviceNames(b).length > 0) - Number(deviceNames(a).length > 0));
+  // Dois grupos: aparelhos (os com aparelho conectado primeiro, os que ainda não
+  // existem no fim) e recursos do app. A chave de cada linha já mostra se está no
+  // menu. Ferramentas de desenvolvedor ficam em "Avançado".
+  const brands = plugins.filter((p) => p.status !== 'tool');
+  const rank = (p) => (!canInstall(p) ? 2 : deviceNames(p).length ? 0 : 1);
+  const devices = brands.filter((p) => !isFeature(p)).sort((a, b) => rank(a) - rank(b));
+  const features = brands.filter(isFeature);
   const tools = plugins.filter((p) => p.status === 'tool');
+  const group = (title, hint, list) => (list.length
+    ? h('section', { class: 'ext-group' },
+      h('h3', {}, title), h('p', { class: 'muted small' }, hint),
+      h('div', { class: 'ext-list' }, list.map(extensionItem)))
+    : null);
+  const inMenu = brands.filter((p) => extensions.has(p.id));
+  const total = brands.filter(canInstall).length;
   clear(dialogEl,
     h('div', { class: 'dialog-head' },
-      h('h2', {}, 'Abas'),
-      button('Fechar', () => dialogEl.close())),
-    h('p', { class: 'muted' }, 'Cada aba funciona para os aparelhos daquele tipo, de qualquer marca, e aparece no menu. Adicione só as que você usa.'),
-    h('div', { class: 'ext-list' }, brands.map(extensionItem)),
+      h('div', {},
+        h('h2', {}, 'Abas'),
+        h('p', { class: 'muted small ext-count' }, inMenu.length === 1 ? `1 de ${total} no menu` : `${inMenu.length} de ${total} no menu`)),
+      h('div', { class: 'dialog-actions' },
+        // Aberta pelas Configurações: "Voltar" fecha e reabre as Configurações.
+        dialogFromSettings ? h('button', {
+          class: 'btn secondary dialog-icon-btn', title: 'Voltar', 'aria-label': 'Voltar',
+          // Abre as Configurações por cima e só então fecha esta: fechando antes,
+          // a tela ficava sem janela enquanto as Configurações carregavam (piscava).
+          onclick: async () => { await openSettings(); dialogEl.close(); },
+        }, '←') : null,
+        h('button', { class: 'btn secondary dialog-icon-btn', title: 'Fechar', 'aria-label': 'Fechar', onclick: () => dialogEl.close() }, '✕'))),
+    h('p', { class: 'muted ext-intro' }, 'Ligue só as abas que você usa; elas aparecem no menu e dá para mudar quando quiser.'),
+    group('Aparelhos', 'Para configurar controles, fones, teclados e outros periféricos.', devices),
+    group('Recursos', 'Funções do próprio UniHub, que não precisam de um aparelho conectado.', features),
     tools.length ? h('details', { class: 'advanced' },
       h('summary', {}, 'Avançado (para desenvolvedores)'),
       h('div', { class: 'ext-list' }, tools.map(extensionItem))) : null,
   );
 }
 
+// A janela Abas foi aberta pelas Configurações (mostra "Voltar" para elas).
+let dialogFromSettings = false;
+
 function openDialog() {
   renderDialog();
   dialogEl.showModal();
 }
+
+function openDialogFromSettings() {
+  dialogFromSettings = true;
+  openDialog();
+}
+
+dialogEl.addEventListener('close', () => { dialogFromSettings = false; });
 
 function unmount(id) {
   const entry = mounted.get(id);
@@ -472,7 +605,7 @@ function renderSettings(settings) {
               h('small', { class: 'muted' }, 'Escolha os tipos de aparelho que aparecem no menu, como Gamepads, Headsets e Teclados.')),
             button('Gerenciar abas', () => {
               settingsDialog.close();
-              openDialog();
+              openDialogFromSettings();
             }))),
         settingsGroup('Idiomas',
           h('div', { class: 'segmented', role: 'group', 'aria-label': 'Idiomas' },
@@ -581,7 +714,8 @@ const THEMES = [
   { id: 'light', label: 'Claro', swatch: ['#e7e5e0', '#d0cdc6'] },
   { id: 'dark', label: 'Escuro', swatch: ['#141518', '#020203'] },
   { id: 'graphite', label: 'Grafite', swatch: ['#242830', '#0f1114'] },
-  { id: 'plum', label: 'Ameixa', swatch: ['#efe4a0', '#320b35'] },
+  { id: 'purple', label: 'Roxo', swatch: ['#2d1f3c', '#130c1b'] },
+  { id: 'lilac', label: 'Lilás', swatch: ['#d5bcf4', '#ad85e4'] },
 ];
 const themeBtn = document.getElementById('theme-btn');
 const themeMenu = document.getElementById('theme-menu');

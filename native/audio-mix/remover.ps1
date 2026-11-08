@@ -6,6 +6,8 @@ $clsid = '{6B1F3C2A-8E4D-4F7B-9A15-3C2D7E9F0A41}'
 $pasta = 'C:\Program Files\UniHub\audio-mix'
 $capturas = 'SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture'
 $sfx = '{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},13'
+$modos = '{d3993a3f-99c2-4402-b5ec-a92a0367664b},5'
+$efx = '{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15'
 
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Rode este script como administrador.' }
@@ -26,6 +28,25 @@ foreach ($id in (Get-ChildItem "HKLM:\$capturas" | ForEach-Object PSChildName)) 
     $lista = @(@($atual) | ForEach-Object { $_ -split '(?<=\})(?=\{)' } | Where-Object { $_ -and $_ -ne $clsid })
     if ($lista.Count) { $k.SetValue($sfx, [string[]]$lista, $multi) } else { $k.DeleteValue($sfx, $false) }
     Write-Host "Microfone ${id}: efeito tirado da lista (sem backup)."
+  }
+  # Efeitos de ponta: onde o instalar.ps1 põe o efeito.
+  $backupEfx = Join-Path $pasta ("backup-efx-" + $id.Trim('{}') + ".json")
+  $atualEfx = $k.GetValue($efx)
+  if (Test-Path $backupEfx) {
+    $b = Get-Content $backupEfx -Raw | ConvertFrom-Json
+    if ($b.existia) { $k.SetValue($efx, [string[]]$b.valor, $multi) } else { $k.DeleteValue($efx, $false) }
+    Write-Host "Microfone ${id}: efeitos de ponta restaurados do backup."
+  } elseif ($null -ne $atualEfx -and (@($atualEfx) -join '') -match [regex]::Escape($clsid)) {
+    $lista = @(@($atualEfx) | ForEach-Object { $_ -split '(?<=\})(?=\{)' } | Where-Object { $_ -and $_ -ne $clsid })
+    if ($lista.Count) { $k.SetValue($efx, [string[]]$lista, $multi) } else { $k.DeleteValue($efx, $false) }
+    Write-Host "Microfone ${id}: efeito tirado dos efeitos de ponta (sem backup)."
+  }
+  # Modos dos efeitos de fluxo (versões antigas do instalar.ps1 mexiam neles).
+  $backupModos = Join-Path $pasta ("backup-modos-" + $id.Trim('{}') + ".json")
+  if (Test-Path $backupModos) {
+    $b = Get-Content $backupModos -Raw | ConvertFrom-Json
+    if ($b.existia) { $k.SetValue($modos, [string[]]$b.valor, $multi) } else { $k.DeleteValue($modos, $false) }
+    Write-Host "Microfone ${id}: modos dos efeitos restaurados do backup."
   }
   $k.Close()
 }

@@ -13,7 +13,8 @@
 // um MCHOSE V9 PRO pelo dongle). Por isso teste e retorno de voz só
 // funcionam no fone que é a saída padrão do Windows.
 
-import { h, card, button } from '../core/dom.js';
+import { h, button } from '../core/dom.js';
+import { iconCard } from './icon-card.js';
 
 const TONE_S = 0.35; // duração de cada nota do teste
 const DEFAULT_MONITOR_VOLUME = 60; // %
@@ -80,6 +81,9 @@ async function openSink(device, onLost) {
   return ac;
 }
 
+/** Cartão com ícone e título: o formato de todos os cartões desta tela. */
+const audioCard = (kind, title, className, ...children) => iconCard(kind, title, { className }, ...children);
+
 // Um retorno de voz por vez, em qualquer fone: ligar um desliga o outro.
 let stopActiveMonitor = null;
 
@@ -89,7 +93,7 @@ let stopActiveMonitor = null;
  * @param {string} [o.driverNote]                 o que fica por conta do driver do fabricante
  */
 export function headsetAudioTab({ matches, driverNote }) {
-  const root = h('div', { class: 'device-cards' }, h('div', { class: 'empty' }, 'Procurando o som do headset…'));
+  const root = h('div', { class: 'audio-grid' }, h('div', { class: 'empty' }, 'Procurando o som do headset…'));
   let devices = { output: null, callOutput: null, input: null };
   let outputIsDefault = false;
 
@@ -239,25 +243,29 @@ export function headsetAudioTab({ matches, driverNote }) {
         e.target.disabled = false;
       },
     });
-    const testButton = (label, pan) => button(label, () => playTest(pan), { disabled: !canPlay });
+    // Teste: três botões largos, na ordem dos ouvidos (esquerdo, os dois, direito).
+    const testButton = (label, pan, side) => h('button', {
+      class: `btn secondary audio-test-btn ${side}`, disabled: !canPlay, onclick: () => playTest(pan),
+    }, h('span', { class: 'audio-test-side', 'aria-hidden': 'true' }, side === 'left' ? '◀' : side === 'right' ? '▶' : '◀ ▶'), label);
     const openSettings = () => (window.unihub?.openSoundSettings
       ? button('Abrir configurações de som', () => window.unihub.openSoundSettings())
       : null);
 
     // Cartões opcionais vêm como null: fora da lista, senão viram o texto "null".
+    // Em tela larga ficam em duas colunas; o aviso de saída padrão ocupa as duas.
     root.replaceChildren(...[
-      blocked ? card('Este fone não é a saída padrão',
+      blocked ? audioCard('warning', 'Este fone não é a saída padrão', 'audio-warning',
         h('p', { class: 'muted small' }, 'O Windows só deixa o UniHub tocar no fone que é a saída de som padrão. Escolha este fone em Configurações › Som › Saída para usar o teste e o retorno de voz.'),
         openSettings()) : null,
-      card('Teste de som',
+      audioCard('speaker', 'Teste de som', '',
         h('p', { class: 'muted small' }, output
           ? `Toca duas notas no ${friendlyLabel(output.label)}. Confira se cada lado sai no ouvido certo.`
           : 'Saída de som deste fone não encontrada. Conecte o fone para testar.'),
-        h('div', { class: 'row' },
-          testButton('Esquerdo', -1),
-          testButton('Direito', 1),
-          testButton('Os dois', 0))),
-      card('Ouvir o microfone',
+        h('div', { class: 'audio-test' },
+          testButton('Esquerdo', -1, 'left'),
+          testButton('Os dois', 0, 'both'),
+          testButton('Direito', 1, 'right'))),
+      audioCard('mic', 'Ouvir o microfone', '',
         h('label', { class: 'setting-row' },
           h('span', { class: 'setting-text' },
             h('span', {}, 'Retorno de voz'),
@@ -268,13 +276,15 @@ export function headsetAudioTab({ matches, driverNote }) {
           toggle),
         isBluetooth(input) && !blocked ? h('p', { class: 'muted small' },
           'Fone Bluetooth: com o retorno ligado, ele entra no modo de chamada e o som fica com qualidade menor até desligar.') : null,
-        h('div', { class: 'slider-row' }, volume, volumeOut),
+        h('div', { class: 'audio-volume' },
+          h('span', { class: 'small' }, 'Volume do retorno'),
+          h('div', { class: 'slider-row' }, volume, volumeOut)),
         status),
       // Com o aviso de saída padrão no topo, o atalho já está lá: um só basta.
-      blocked ? null : card('Som do Windows',
+      blocked ? null : audioCard('monitor', 'Som do Windows', '',
         h('p', { class: 'muted small' }, 'Volume geral, saída padrão e volume do microfone ficam nas configurações do Windows.'),
         openSettings()),
-      driverNote ? card('Equalizador e surround', h('p', { class: 'muted small' }, driverNote)) : null,
+      driverNote ? audioCard('equalizer', 'Equalizador e surround', 'audio-note', h('p', { class: 'muted small' }, driverNote)) : null,
     ].filter(Boolean));
   }
 

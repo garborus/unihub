@@ -1,16 +1,18 @@
 // Sub-aba "Vibração" do GameSir: testa os motores e mostra, no desenho do
 // controle, qual lado está vibrando.
 
-import { h, card, button } from '../../../core/dom.js';
+import { h } from '../../../core/dom.js';
 import { controllerSvg, XBOX_PAD_PATH } from '../../../shared/controller-art.js';
+import { iconCard } from '../../../shared/icon-card.js';
 
 const STRENGTH = 200; // 0–255
 const DURATION_MS = 700;
 
+// Na ordem dos punhos do controle: esquerdo, os dois, direito.
 const MODES = [
-  { id: 'left', label: 'Motor esquerdo', motors: [STRENGTH, 0] },
-  { id: 'right', label: 'Motor direito', motors: [0, STRENGTH] },
-  { id: 'both', label: 'Ambos', motors: [STRENGTH, STRENGTH] },
+  { id: 'left', label: 'Motor esquerdo', side: '◀', motors: [STRENGTH, 0] },
+  { id: 'both', label: 'Ambos', side: '◀ ▶', motors: [STRENGTH, STRENGTH] },
+  { id: 'right', label: 'Motor direito', side: '▶', motors: [0, STRENGTH] },
 ];
 
 export function vibrationTab(session, ctx) {
@@ -30,11 +32,23 @@ export function vibrationTab(session, ctx) {
     }
   }
 
+  // Mouse em cima de um botão: o lado do controle que vai vibrar fica marcado
+  // (só no desenho; o controle só vibra ao clicar).
+  const preview = (mode) => {
+    art.classList.remove('vib-hover-left', 'vib-hover-right', 'vib-hover-both');
+    if (mode) art.classList.add(`vib-hover-${mode.id}`);
+  };
+
   return h('div', { class: 'vibration' },
-    card('Testar vibração',
-      h('p', { class: 'muted small' }, 'Cada botão liga o motor por menos de 1 segundo.'),
-      h('div', { class: 'row' }, MODES.map((m) => button(m.label, () => vibrate(m))))),
-    h('div', { class: 'vibration-stage' }, art));
+    iconCard('vibration', 'Testar vibração', { className: 'vib-card' },
+      h('p', { class: 'muted small' }, 'Cada botão liga o motor por menos de 1 segundo. O desenho mostra qual lado está vibrando.'),
+      h('div', { class: 'vibration-stage' }, art),
+      h('div', { class: 'vib-buttons' }, MODES.map((m) => h('button', {
+        class: `btn secondary vib-btn ${m.id}`,
+        onclick: () => vibrate(m),
+        onmouseenter: () => preview(m), onmouseleave: () => preview(null),
+        onfocus: () => preview(m), onblur: () => preview(null),
+      }, h('span', { class: 'vib-btn-side', 'aria-hidden': 'true' }, m.side), m.label)))));
 }
 
 /** Controle com as duas metades destacáveis e ondas de vibração nos punhos. */

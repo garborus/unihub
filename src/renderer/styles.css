@@ -58,26 +58,35 @@
   color-scheme: light;
 }
 
-/* Ameixa: roxo profundo (#320b35) com texto e destaque cor de amêndoa. */
-:root[data-theme="plum"] {
-  --bg: #250827;
-  --panel: #320b35;
-  --panel-2: #3e1442;
-  --border: #552459;
-  --text: #f2edc4;
-  --muted: #bba9a8;
-  --accent: #efe4a0;
-  --accent-2: #efe4a0;
-  --on-accent: #320b35;
-  --ok: #7fd3a0;
-  --warn: #f0b860;
-  --err: #ff8a9a;
-  --well: #1b061d;
-  --pill-beta-border: #6e4b2a;
-  --pill-tool-border: #7a6a55;
+/* Roxo: fundo roxo bem escuro, textos de apoio em lilás (#BC96EC), destaque no azul padrão. */
+:root[data-theme="purple"] {
+  --bg: #1a1124;
+  --panel: #23172f;
+  --panel-2: #2d1f3c;
+  --border: #45335c;
+  --text: #f4ecff;
+  --muted: #bc96ec;
+  --well: #130c1b;
+  --pill-tool-border: #5d4682;
 }
-/* Nas áreas com cor própria (Gamepads, Headsets, Teclados) o texto dos botões continua branco. */
-:root[data-theme="plum"] [data-plugin] { --on-accent: #fff; }
+/* Lilás: fundo lilás (#BC96EC), texto roxo escuro, destaque no azul do tema Claro. */
+:root[data-theme="lilac"] {
+  --bg: #bc96ec;
+  --panel: #c9aaf0;
+  --panel-2: #d5bcf4;
+  --border: #a47cdb;
+  --text: #23103a;
+  --muted: #4f3270;
+  --accent: #2f6fe8;
+  --accent-2: #2f6fe8;
+  --ok: #1d7a4a;
+  --warn: #8a5a00;
+  --err: #b3203a;
+  --well: #ad85e4;
+  --pill-beta-border: #e6cf9c;
+  --pill-tool-border: #8a62c4;
+  color-scheme: light;
+}
 
 * { box-sizing: border-box; }
 
@@ -97,7 +106,13 @@ body {
   font: 14px/1.45 "Montserrat", "Segoe UI", system-ui, sans-serif;
   display: flex;
   flex-direction: column;
+  /* App, não página: o mouse (ou Ctrl+A no teste de teclas) não seleciona
+     textos. Só os campos de digitação continuam selecionáveis. */
+  user-select: none;
+  -webkit-user-drag: none;
 }
+input, textarea, [contenteditable="true"] { user-select: text; }
+img, svg { -webkit-user-drag: none; }
 h2 { margin: 0 0 16px; font-size: 20px; }
 h2 .pill { margin-left: 10px; vertical-align: middle; }
 h3 { margin: 0 0 10px; font-size: 15px; }
@@ -325,21 +340,30 @@ body.home-wide .home-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
   text-align: left; font: inherit; color: inherit; cursor: pointer;
   aspect-ratio: 1 / 1; container-type: inline-size;
-  border-width: 3px; /* borda mais visível, na janela e em tela cheia */
+  /* Mesmo visual dos cartões de abas para ativar: ícone na cor da aba e, com o
+     mouse em cima, o cartão sobe com sombra na cor da aba. */
+  transition: transform .2s ease, border-color .2s, box-shadow .2s;
 }
-.home-card:hover { border-color: var(--accent); }
+.home-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 18%, transparent); }
 .home-card-art {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 42%; aspect-ratio: 1; border-radius: 28px;
-  background: var(--panel-2); border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   font-weight: 700; font-size: 20px;
+  transition: transform .25s ease;
 }
+.home-card:hover .home-card-art { transform: scale(1.06) rotate(-4deg); }
 .home-card-art svg { width: 62%; height: 62%; }
-.home-card-art .pad-body, .home-card-art .hs-cup { fill: var(--muted); }
-.home-card-art .pad-part { fill: var(--panel-2); }
-.home-card-art .hs-band { stroke: var(--muted); }
-.home-card:hover .home-card-art .pad-body, .home-card:hover .home-card-art .hs-cup { fill: var(--accent); }
-.home-card:hover .home-card-art .hs-band { stroke: var(--accent); }
+.home-card .home-card-art .pad-body, .home-card .home-card-art .hs-cup { fill: currentColor; }
+.home-card .home-card-art .hs-band { stroke: currentColor; }
+/* Entrada em cascata, só na primeira vez que o Início abre. */
+.home-grid.animate .home-card { animation: welcome-in .5s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: calc(.05s + var(--i, 0) * .07s); }
+@media (prefers-reduced-motion: reduce) {
+  .home-card, .home-card-art { transition: none; }
+  .home-card:hover, .home-card:hover .home-card-art { transform: none; }
+  .home-grid.animate .home-card { animation: none; }
+}
 /* Faixa de cima: plugin à esquerda, conexão à direita. */
 .home-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .home-card-plugin { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
@@ -356,8 +380,12 @@ body.home-wide .home-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .home-card-bar.charging::after { opacity: .6; }
 .card ul, .card ol { margin: 6px 0 0; padding-left: 18px; }
 
-.info-card { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
-.info-card .facts { margin-bottom: 8px; }
+/* Informações do aparelho: um quadro por dado, lado a lado. */
+.fact-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin: 0; }
+.fact-tile { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); min-width: 0; }
+.fact-tile dt { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.fact-tile dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fact-tile dd .vidpid small, .fact-tile dd small { font-weight: 400; }
 .device-cards { display: flex; flex-direction: column; gap: 14px; }
 /* Perfil em uso no controle: anel verde em volta do número. */
 .round-btn.in-use { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ok); }
@@ -491,8 +519,6 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .vidpid { display: flex; flex-direction: column; gap: 2px; }
 .vidpid small { font-size: 11px; }
 .info-card p { margin: 0; }
-.info-device { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
-.info-device strong { font-size: 18px; }
 .device-detail { min-width: 0; }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0 0 12px; }
 .facts dt { color: var(--muted); }
@@ -614,6 +640,16 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 
 /* Teste de botões visual */
 .gp-tester { display: flex; flex-direction: column; gap: 16px; }
+/* Teste de botões sem controle na tela: desenho "esperando" e a instrução. */
+.gp-waiting { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 56px 24px; border: 1px dashed var(--border); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.gp-waiting[hidden] { display: none; }
+.gp-waiting > strong { font-size: 17px; }
+.gp-waiting > p { margin: 0; max-width: 460px; line-height: 1.45; }
+.gp-waiting-art { width: 132px; color: var(--accent); animation: gp-wait 2.4s ease-in-out infinite; }
+.gp-waiting-svg { width: 100%; height: auto; display: block; }
+.gp-waiting-svg .pad-body { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: currentColor; stroke-width: 6; }
+@keyframes gp-wait { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .gp-waiting-art { animation: none; } }
 .gp-pad { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
 .gp-stage { display: flex; justify-content: center; }
 .gp-art { width: 100%; max-width: 620px; overflow: visible; }
@@ -656,17 +692,23 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .gp-pressed { text-align: center; min-height: 1.4em; margin: 6px 0 0; }
 
 /* Vibração */
-/* Mesmo layout responsivo da aba Luzes. */
-.vibration {
-  display: grid; grid-template-columns: clamp(340px, 30vw, 560px) 1fr;
-  gap: clamp(20px, 2.5vw, 48px); align-items: start;
-}
+/* Um cartão só: o controle no meio e, embaixo, os três botões na ordem dos
+   punhos (esquerdo, os dois, direito). */
+.vibration { max-width: 1100px; margin: 0 auto; }
+.vib-card { gap: 14px; }
 .vibration-stage {
-  position: sticky; top: 0;
   display: flex; align-items: center; justify-content: center;
-  height: max(340px, calc(100vh - 230px));
+  height: clamp(220px, calc(100vh - 470px), 480px); padding: 8px 40px;
 }
-.vib-art { width: 100%; height: 100%; max-width: 1100px; overflow: visible; }
+.vib-art { width: 100%; height: 100%; overflow: visible; }
+.vib-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vib-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px; }
+.vib-btn-side { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--accent); }
+.vib-btn:hover:not(:disabled) { border-color: var(--accent); }
+/* Prévia: mouse em cima de um botão marca de leve o lado que vai vibrar. */
+.vib-art.vib-hover-left .vib-half-left,
+.vib-art.vib-hover-right .vib-half-right,
+.vib-art.vib-hover-both .vib-half { opacity: .14; }
 .vib-art .pad-body { fill: var(--panel-2); stroke: var(--border); stroke-width: 2; }
 .vib-art .pad-part { fill: var(--panel); stroke: var(--border); }
 .vib-half { fill: var(--accent); opacity: 0; transition: opacity .15s; pointer-events: none; transform-box: fill-box; transform-origin: center; }
@@ -726,35 +768,98 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .cp-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Início e extensões */
-.overview-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.overview-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .overview-head h2 { margin: 0; }
+.overview-sub { margin: 4px 0 0; }
 .empty .btn { margin-top: 10px; }
-.suggestions { margin-top: 24px; }
-.suggestion ul { margin: 6px 0 14px; }
-/* Mouse em cima: uma linha na cor do plugin corre no topo, da esquerda para a
-   direita. Cantos de cima retos. A borda (::after) e a linha (::before) são
-   desenhadas na mesma caixa, sem deslocamento: com o zoom do Windows (ex.: 125%)
-   as duas são arredondadas igual e a linha fica rente às bordas laterais. */
-.card.suggestion {
-  position: relative; border: 0; padding: 16px 18px; /* 2px a mais: o lugar da borda */
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-.card.suggestion::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  border: 2px solid var(--border); border-radius: inherit;
-}
-.card.suggestion::before {
-  content: ""; position: absolute; top: 0; left: 0; height: 3px; width: 0; z-index: 1;
-  background: var(--accent); transition: width .35s ease-out;
-}
-.card.suggestion:hover::before { width: 100%; }
-/* Botão com o mouse em cima: sombra clara (35%) na cor da linha. */
-.card.suggestion .btn:hover:not(:disabled) { box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent); }
-@media (prefers-reduced-motion: reduce) { .card.suggestion::before { transition: none; } }
-.welcome { padding: 28px 0 8px; max-width: 640px; }
-.welcome h2 { font-size: 26px; margin-bottom: 8px; }
+/* Adicionar mais abas (Início com abas ativas): título e, ao lado, ativar todas. */
+.more-tabs { margin-top: 36px; padding-top: 24px; border-top: 1px solid var(--border); }
+.more-tabs-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.more-tabs-head h3 { margin: 0 0 4px; }
+.more-tabs-head p { margin: 0; }
+.more-tabs.animate .welcome-pick { animation: welcome-in .5s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: calc(.1s + var(--i, 0) * .07s); }
+@media (prefers-reduced-motion: reduce) { .more-tabs .welcome-pick { animation: none !important; transition: none !important; } .more-tabs .welcome-pick:hover, .more-tabs .welcome-pick:hover .welcome-pick-art { transform: none; } }
+/* Boas-vindas (Início sem nenhuma aba ativada): centralizada e com largura
+   máxima, para não ficar tudo grudado na esquerda em tela cheia. */
+.welcome-page { width: 100%; max-width: 1120px; margin: 0 auto; }
+.welcome { padding: 28px 0 8px; max-width: 680px; }
+.welcome h2 { font-size: 30px; margin-bottom: 8px; }
 .welcome p { font-size: 15px; margin: 0; }
-.welcome-actions { margin-top: 20px; }
+.welcome-actions { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Como funciona: três passos ligados por uma linha que se enche até o passo atual. */
+.welcome-steps {
+  list-style: none; margin: 28px 0 0; padding: 0; position: relative;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px;
+}
+.welcome-step {
+  display: flex; gap: 12px; align-items: flex-start; padding: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color .2s, background .2s;
+}
+.welcome-step-n {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 700; font-size: 14px; border: 2px solid var(--border); color: var(--muted); background: var(--panel-2);
+}
+.welcome-step strong { display: block; margin: 4px 0 4px; }
+.welcome-step p { margin: 0; line-height: 1.45; }
+.welcome-step.done .welcome-step-n { background: var(--ok); border-color: var(--ok); color: #fff; }
+.welcome-step.current { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.welcome-step.current .welcome-step-n { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent, #fff); }
+.welcome-step.current .welcome-step-n::after {
+  content: ""; position: absolute; inset: -2px; border-radius: 50%;
+  border: 2px solid var(--accent); animation: welcome-pulse 2s ease-out infinite;
+}
+.welcome-step-n { position: relative; }
+.welcome-step.todo { opacity: .75; }
+@keyframes welcome-pulse { from { transform: scale(1); opacity: .8; } to { transform: scale(1.7); opacity: 0; } }
+
+/* Abas para ativar: cartões com o ícone do tipo de aparelho. */
+.welcome-picks { margin-top: 32px; }
+.welcome-picks > h3 { margin-bottom: 12px; }
+/* Aparelhos e Recursos, quando os dois aparecem. */
+.pick-group { margin: 16px 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.welcome-picks > h3 + .pick-group, .more-tabs-head + .pick-group { margin-top: 0; }
+.welcome-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.welcome-pick {
+  display: flex; flex-direction: column; gap: 12px; padding: 18px;
+  transition: transform .2s ease, border-color .2s, box-shadow .2s;
+}
+.welcome-pick:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 18%, transparent); }
+.welcome-pick-head { display: flex; align-items: center; gap: 14px; }
+.welcome-pick-head h3 { margin: 0 0 4px; }
+.welcome-pick-art {
+  flex: none; width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); font-weight: 700;
+  transition: transform .25s ease;
+}
+.welcome-pick:hover .welcome-pick-art { transform: scale(1.08) rotate(-4deg); }
+.welcome-pick-art svg { width: 30px; height: 30px; }
+.welcome-pick-art .pad-body, .welcome-pick-art .hs-cup { fill: currentColor; }
+.welcome-pick .pill { white-space: nowrap; }
+.welcome-pick .pill.found { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.welcome-pick-devices { margin: 0; padding-left: 18px; }
+.welcome-pick > p { margin: 0; line-height: 1.45; }
+.welcome-pick > .btn { margin-top: auto; align-self: flex-start; }
+.welcome-pick .btn:hover:not(:disabled) { box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* Entrada: as partes sobem e aparecem em cascata, só na primeira vez que a tela abre. */
+.welcome-page.animate > *, .welcome-page.animate .welcome-step, .welcome-page.animate .welcome-pick {
+  animation: welcome-in .5s cubic-bezier(.2, .7, .2, 1) backwards;
+}
+.welcome-page.animate .welcome-steps, .welcome-page.animate .welcome-picks { animation: none; }
+.welcome-page.animate .welcome-step:nth-child(1) { animation-delay: .12s; }
+.welcome-page.animate .welcome-step:nth-child(2) { animation-delay: .2s; }
+.welcome-page.animate .welcome-step:nth-child(3) { animation-delay: .28s; }
+.welcome-page.animate .welcome-picks > h3 { animation: welcome-in .5s .34s cubic-bezier(.2, .7, .2, 1) backwards; }
+.welcome-page.animate .welcome-pick { animation-delay: calc(.4s + var(--i, 0) * .07s); }
+.welcome-page.animate .scan-hint { animation-delay: .6s; }
+@keyframes welcome-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-page *, .welcome-page.animate > * { animation: none !important; transition: none !important; }
+  .welcome-pick:hover, .welcome-pick:hover .welcome-pick-art { transform: none; }
+}
 .scan-hint { margin-top: 28px; }
 /* Início: a página ocupa a altura toda e "Procurar dispositivos" fica no rodapé. */
 .home-view:not([hidden]) { display: flex; flex-direction: column; min-height: 100%; }
@@ -781,20 +886,44 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .advanced { margin-top: 16px; }
 .advanced summary { cursor: pointer; color: var(--muted); }
 .hub-dialog {
-  width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto;
+  width: min(600px, calc(100vw - 32px)); max-height: 84vh; overflow: auto;
   background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px;
 }
 .hub-dialog::backdrop { background: rgb(0 0 0 / .55); }
-.dialog-head { display: flex; justify-content: space-between; align-items: center; }
+.dialog-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .dialog-head h2 { margin: 0; }
-.ext-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+/* Janela Abas: grupos (No menu, Disponíveis, Em breve) com uma linha por aba. */
+.ext-count { margin: 2px 0 0; }
+/* Botões do topo da janela Abas: "← Voltar" (vinda das Configurações) e Fechar. */
+.dialog-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.dialog-icon-btn { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; font-size: 16px; line-height: 1; }
+.ext-intro { margin: 12px 0 4px; }
+.ext-group { margin-top: 18px; }
+.ext-group > h3 { margin: 0; font-size: 15px; }
+.ext-group > p { margin: 2px 0 0; }
+.ext-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .ext-item {
-  display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--panel-2);
+  display: flex; align-items: center; gap: 14px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel-2);
+  cursor: pointer; transition: border-color .15s, background .15s;
 }
-.ext-item.installed { border-color: var(--accent); }
-.ext-info { display: flex; flex-direction: column; gap: 2px; }
-.detected { color: var(--ok); }
+.ext-item:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.ext-item.installed { border-color: color-mix(in srgb, var(--accent) 70%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, var(--panel-2)); }
+.ext-item.soon { cursor: default; opacity: .65; }
+.ext-item.soon:hover { border-color: var(--border); }
+.ext-item .switch { margin-left: auto; }
+.ext-art {
+  flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); font-weight: 700;
+}
+.ext-art svg { width: 24px; height: 24px; }
+.ext-art .pad-body, .ext-art .hs-cup { fill: currentColor; }
+.ext-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ext-title { display: flex; align-items: center; gap: 8px; }
+.detected { color: var(--ok); display: inline-flex; align-items: center; gap: 6px; }
+.ext-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+@media (prefers-reduced-motion: reduce) { .ext-item { transition: none; } }
 
 /* Editor de luzes */
 /* Painel cresce junto com a janela (até um limite) e o desenho ocupa o resto,
@@ -911,9 +1040,15 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .segmented .btn { white-space: nowrap; }
 
 /* Teste de teclas (aba Teclados): teclas posicionadas em % dentro do desenho. */
-.kt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 4px 0 16px; }
-.kt-stats { flex: 1; font-size: 13px; }
-.kt-board { position: relative; width: 100%; max-width: 1100px; container-type: inline-size; }
+/* Teste de teclas: barra de progresso e teclado centralizado no cartão. */
+.kt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 2px 0 8px; }
+.kt-progress-wrap { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 6px; }
+.kt-count { font-size: 13px; font-weight: 600; }
+.kt-progress { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.kt-progress-fill { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--ok); transition: width .2s ease; }
+.kt-together { font-size: 12px; }
+.kt-board { position: relative; width: 100%; max-width: 1100px; margin: 0 auto; container-type: inline-size; }
+.kt-card > p:last-child { text-align: center; }
 .kt-key {
   position: absolute; box-sizing: border-box; padding: 2px;
   display: flex; align-items: center; justify-content: center;
@@ -926,22 +1061,41 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 }
 .kt-key.tested > span { border-color: var(--ok); color: var(--ok); }
 .kt-key.down > span { background: var(--accent); border-color: var(--accent); color: #fff; }
-.kt-others { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.kt-others { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.kt-others:empty { display: none; }
 .kt-key.round > span { border-radius: 50%; }
 /* Tecla só desenhada (Fn): não chega ao Windows, não entra no teste. */
 .kt-key.fixed > span { border-style: dashed; color: var(--muted); background: none; }
 /* Escolha do modelo (AULA série F) no card de informações. */
 .model-pick { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 
-/* Luzes dos teclados AULA: efeitos à esquerda, ajustes à direita. */
-.aula-lights-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+/* Luzes dos teclados AULA: efeitos à esquerda, ajustes à direita, mesma altura. */
+.aula-lights-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; }
 @media (max-width: 1100px) { .aula-lights-grid { grid-template-columns: 1fr; } }
-.aula-effects .btn { white-space: normal; line-height: 1.25; min-height: 40px; }
-.aula-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.aula-card { gap: 12px; }
+.aula-effects .btn { white-space: normal; line-height: 1.25; min-height: 42px; transition: border-color .15s, background .15s, color .15s; }
+.aula-effects .btn:hover:not(.selected) { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+/* Efeito em uso: fundo na cor da aba e uma bolinha antes do nome. */
+.aula-effects .btn.selected { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); font-weight: 600; }
+.aula-effects .btn.selected::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 8px; vertical-align: middle; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.aula-field { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.aula-field-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.aula-value { font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); }
 .aula-field input[type="range"] { accent-color: var(--accent); width: 100%; }
+.aula-ends { display: flex; justify-content: space-between; margin-top: -2px; }
+.aula-colors { padding-top: 12px; border-top: 1px solid var(--border); margin-top: 6px; }
 .aula-swatches { flex-wrap: wrap; gap: 14px; }
 .swatch-dot.colorful { background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
-.aula-status { margin-top: 12px; }
+/* Estado da gravação, no topo do cartão de efeitos. */
+.aula-status { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.aula-status:empty { display: none; }
+.aula-status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.aula-status.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
+.aula-status.saving { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+.aula-status.saving::before { animation: aula-blink 1s ease-in-out infinite; }
+.aula-status.error { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border)); white-space: normal; }
+@keyframes aula-blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .aula-status.saving::before { animation: none; } .aula-effects .btn { transition: none; } }
 
 /* Cor de destaque por plugin: vale para tudo que é do plugin (marcado com
    data-plugin): a área dele, a aba no menu, os cartões no Início e o item na
@@ -951,17 +1105,16 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
    para o texto branco ser legível. --on-accent (opcional) é a cor do texto sobre
    o fundo dos botões. */
 [data-plugin="gamepads"] { --accent: #ff8a1f; --accent-2: #e8740c; }
-:root[data-theme="light"] [data-plugin="gamepads"] { --accent: #d9670a; --accent-2: #d9670a; }
+:root[data-theme="light"] [data-plugin="gamepads"], :root[data-theme="lilac"] [data-plugin="gamepads"] { --accent: #d9670a; --accent-2: #d9670a; }
 [data-plugin="headsets"] { --accent: #7bb51c; --accent-2: #457008; }
 [data-plugin="keyboards"] { --accent: #38bdf8; --accent-2: #0e9bd8; }
-:root[data-theme="light"] [data-plugin="keyboards"] { --accent: #0b7fb5; --accent-2: #0b7fb5; }
+:root[data-theme="light"] [data-plugin="keyboards"], :root[data-theme="lilac"] [data-plugin="keyboards"] { --accent: #0b7fb5; --accent-2: #0b7fb5; }
 
 /* Configurações e janela Plugins: destaque neutro, nas cores do tema (sem o
    azul): selecionado = cor do texto do tema, com o texto na cor do cartão. */
 #settings-dialog, #hub-dialog { --accent: var(--text); --accent-2: var(--text); --on-accent: var(--panel); }
 #settings-dialog .switch:checked::after, #hub-dialog .switch:checked::after { background: var(--panel); }
 /* Na janela Plugins, os botões ficam neutros também ao passar o mouse, mesmo dentro do item colorido. */
-.ext-item .btn { --accent: var(--text); }
 .export-row.done::before { background: color-mix(in srgb, var(--ok) 14%, transparent); }
 
 /* Aba Sons: biblioteca de sons à esquerda, saídas à direita. */
@@ -974,9 +1127,10 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .sons-library { display: flex; flex-direction: column; gap: 14px; }
 .sons-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .sons-head h3 { margin: 0 0 2px; }
+.sons-head > div:first-child { flex: 1; min-width: 0; }
+.sons-howto { margin: 6px 0 0; line-height: 1.45; }
 .sons-head-actions { display: flex; gap: 8px; align-items: center; }
-.sons-add { display: inline-flex; align-items: center; gap: 6px; }
-.sons-add .sons-icon { width: 16px; height: 16px; }
+.sons-stop-top[hidden] { display: none; }
 .sons-message { margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--panel-2); color: var(--muted); }
 .sons-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .sons-empty p { margin: 0; }
@@ -998,6 +1152,7 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .sons-tile-body { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
 .sons-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sons-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent); }
+.sons-time { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .sons-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
 .sons-eq i { width: 3px; background: currentColor; border-radius: 1px; animation: sons-eq .9s ease-in-out infinite; }
 .sons-eq i:nth-child(2) { animation-delay: -.3s; }
@@ -1006,16 +1161,20 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 @media (prefers-reduced-motion: reduce) { .sons-eq i { animation: none; height: 8px; } }
 .sons-tile-actions { grid-column: 1 / -1; display: flex; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
 .sons-tile-actions .sons-icon-btn:last-child { margin-left: auto; }
+.sons-hotkey { height: 32px; padding: 0 8px; font-size: 12px; display: inline-flex; align-items: center; min-width: 0; max-width: 180px; }
+.sons-hotkey kbd { font: inherit; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sons-hotkey:hover kbd { border-color: var(--accent); }
+.sons-hotkey.recording { color: var(--accent); border-color: var(--accent); white-space: nowrap; }
 .sons-icon-btn .sons-icon { width: 16px; height: 16px; }
 .sons-icon-btn:last-child:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
 .sons-tile-actions .sons-icon-btn:not(:last-child):hover:not(:disabled) { color: var(--accent); }
 .sons-volume { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sons-volume-hint { margin: 0; line-height: 1.45; }
 .sons-volume-row { display: grid; grid-template-columns: auto 92px minmax(0, 1fr) 44px; align-items: center; gap: 10px; }
 .sons-volume-row input { accent-color: var(--accent); width: 100%; }
 .sons-volume-icon { color: var(--muted); display: flex; }
 .sons-volume-value { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); font-size: 12px; }
-.sons-modes { display: flex; width: 100%; margin-bottom: 12px; }
-.sons-modes .btn { flex: 1; }
+.sons-mode-switch { margin-top: 12px; }
 .sons-status-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .sons-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); margin-bottom: 10px; }
 .sons-status-row .sons-status { margin-bottom: 0; }
@@ -1028,6 +1187,41 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .sons-mic { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: var(--panel-2); margin-bottom: 10px; }
 .sons-mic > span:last-child { display: flex; flex-direction: column; }
 .sons-mic-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); color: var(--accent); }
+.sons-tile-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 120px; border: 1px dashed var(--border); background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.sons-tile-add:hover { border-color: var(--accent); color: var(--accent); }
+.sons-tile-add-icon { display: flex; width: 36px; height: 36px; border-radius: 50%; align-items: center; justify-content: center; background: var(--panel-2); }
+.sons-folder { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.sons-folder-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sons-folder-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted); }
+.sons-folder-tag.custom { color: var(--accent); }
+.sons-folder-row { display: flex; gap: 8px; align-items: stretch; }
+.sons-folder-path { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.sons-folder-path:hover { border-color: var(--accent); }
+.sons-folder-path:hover .sons-folder-open { color: var(--accent); }
+.sons-folder-icon { color: var(--accent); display: flex; flex-shrink: 0; }
+.sons-folder-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sons-folder-open { color: var(--muted); display: flex; flex-shrink: 0; }
+.sons-folder-open .sons-icon { width: 15px; height: 15px; }
+.sons-folder-hint { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sons-folder-hint .link-btn { font-size: inherit; }
+
+/* "Seus sons" tem cerca de metade da altura da janela (nunca menos de 380 px) e
+   cresce com mais sons até a altura da janela; daí em diante só a lista rola, por
+   dentro, e o rodapé (volumes e pasta) fica sempre à vista no fim do cartão. O rodapé se arruma pela largura do próprio cartão:
+   lado a lado quando cabe, um embaixo do outro quando não. */
+.sons-library { container-type: inline-size; min-height: max(380px, calc((100vh - 112px) / 2)); max-height: max(380px, calc(100vh - 92px)); }
+.sons-library > .sons-grid, .sons-library > .sons-empty { flex: 1; align-content: start; }
+.sons-library > .sons-grid { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 4px; margin-right: -4px; }
+.sons-library > .sons-empty { justify-content: center; }
+.sons-footer { display: flex; flex-direction: column; gap: 14px; margin-top: auto; }
+@container (min-width: 820px) {
+  .sons-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  .sons-footer > .sons-volume, .sons-footer > .sons-folder { height: 100%; }
+}
+@media (min-width: 1400px) {
+  .sons-layout { grid-template-columns: minmax(0, 1fr) 380px; max-width: 1680px; margin: 0 auto; }
+  .sons-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+}
 .sons-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .sons-side .setting-row { padding: 10px 0 8px; }
 body.menu-left .tab-icon.drawn .sons-icon { width: 18px; height: 18px; color: var(--muted); }
@@ -1049,3 +1243,36 @@ body.menu-left .tab[aria-selected="true"] .tab-icon.drawn .sons-icon { color: va
 .update-progress { flex: 1; min-width: 160px; height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .update-progress span { display: block; height: 100%; background: var(--accent); transition: width .15s; }
 .update-error { color: var(--err); }
+
+/* Configurações de áudio dos headsets: cartões com ícone, em duas colunas em
+   tela larga. O aviso de saída padrão ocupa a largura toda. */
+.audio-grid { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: stretch; }
+@media (min-width: 1100px) { .audio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.audio-grid > .empty, .audio-grid > .audio-warning { grid-column: 1 / -1; }
+/* Cartão com ícone (shared/icon-card.js): áudio dos headsets e luzes dos teclados. */
+.icon-card { display: flex; flex-direction: column; gap: 10px; }
+.icon-card > p { margin: 0; line-height: 1.45; }
+.icon-card > .btn { align-self: flex-start; }
+.icon-card-head { display: flex; align-items: center; gap: 12px; }
+.icon-card-head h3 { margin: 0; flex: 1; min-width: 0; }
+.icon-card-icon {
+  flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.icon-card-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.audio-warning .icon-card-icon { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel-2)); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+.audio-note { background: transparent; border-style: dashed; }
+/* Teste de som: três botões largos, esquerdo / os dois / direito. */
+.audio-test { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.audio-test-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; }
+.audio-test-side { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--accent); }
+.audio-test-btn:disabled .audio-test-side { color: var(--muted); }
+/* Volume do retorno, com título em cima do controle. */
+.audio-volume { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border); }
+.icon-card .setting-row { padding: 0; }
+/* Luzes do controle: cabeçalho com ícone e o estado da gravação à direita. */
+.lights-head { margin-bottom: 6px; }
+.lights-head .save-status { white-space: nowrap; }
+.export-card > .btn { align-self: stretch; }
+.kt-together { text-transform: none; letter-spacing: 0; }

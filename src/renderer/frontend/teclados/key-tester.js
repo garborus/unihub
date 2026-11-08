@@ -10,6 +10,7 @@
 
 import { h, clear, button } from '../../core/dom.js';
 import { keyboardLayout, defaultLayout, keyLabel } from '../../plugins/teclados/layouts.js';
+import { iconCard } from '../../shared/icon-card.js';
 
 // O progresso continua ao trocar de aba; "Limpar teste" zera.
 const tested = new Set();
@@ -29,20 +30,24 @@ export function keyTester({ shape = 'full', kind = defaultLayout(navigator.langu
   const codeToKey = new Map(); // code recebido -> code da tecla desenhada (ex.: volume -> botão)
 
   const board = h('div', { class: 'kt-board' });
-  const progress = h('span', { class: 'muted' });
-  const together = h('span', { class: 'muted' });
+  const progress = h('span', { class: 'kt-count' });
+  const progressFill = h('span', { class: 'kt-progress-fill' });
+  const together = h('span', { class: 'pill kt-together' });
   const otherList = h('div', { class: 'kt-others' });
 
-  const root = h('section', { class: 'card kt-card' },
-    h('h3', {}, 'Teste de teclas'),
-    h('p', { class: 'muted' }, 'Aperte as teclas: cada uma acende enquanto está apertada e fica marcada depois de testada. O Windows não informa de qual teclado veio a tecla, então o teste vale para qualquer teclado conectado.'),
+  const clearButton = button('Limpar teste', () => {
+    tested.clear();
+    maxTogether = 0;
+    paint();
+  });
+  const root = iconCard('keyboard', 'Teste de teclas', { className: 'kt-card', aside: clearButton },
+    h('p', { class: 'muted small' }, 'Aperte as teclas: cada uma acende enquanto está apertada e fica marcada depois de testada. O Windows não informa de qual teclado veio a tecla, então o teste vale para qualquer teclado conectado.'),
+    // Progresso: barra que enche conforme as teclas são testadas, e quantas estão apertadas juntas.
     h('div', { class: 'kt-toolbar' },
-      h('span', { class: 'kt-stats' }, progress, together),
-      button('Limpar teste', () => {
-        tested.clear();
-        maxTogether = 0;
-        paint();
-      })),
+      h('div', { class: 'kt-progress-wrap' },
+        progress,
+        h('span', { class: 'kt-progress', 'aria-hidden': 'true' }, progressFill)),
+      together),
     board,
     otherList,
     h('p', { class: 'muted small' }, 'Fn e algumas teclas especiais do teclado não chegam ao Windows e não aparecem aqui. Win e Print Screen podem abrir atalhos do Windows.'));
@@ -77,7 +82,8 @@ export function keyTester({ shape = 'full', kind = defaultLayout(navigator.langu
     }
     const onBoard = [...done].filter((c) => keyEls.has(c)).length;
     progress.textContent = `${onBoard} de ${keyEls.size} teclas testadas`;
-    together.textContent = ` · Juntas agora: ${pressed.size} (máximo: ${maxTogether})`;
+    progressFill.style.width = `${keyEls.size ? (onBoard / keyEls.size) * 100 : 0}%`;
+    together.textContent = `Juntas agora: ${pressed.size} (máximo: ${maxTogether})`;
     const others = [...tested].filter((c) => !codeToKey.has(c));
     clear(otherList, others.length
       ? [h('small', { class: 'muted' }, 'Outras teclas: '), ...others.map((c) => h('span', { class: 'pill' }, c))]

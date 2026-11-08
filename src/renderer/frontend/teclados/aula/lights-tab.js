@@ -7,6 +7,7 @@
 
 import { h, clear, card, button } from '../../../core/dom.js';
 import { openColorPicker } from '../../../shared/color-picker.js';
+import { iconCard } from '../../../shared/icon-card.js';
 import {
   EFFECTS, MAX_BRIGHTNESS, MAX_SPEED, COLORFUL, COLORS_PER_EFFECT, FACTORY_COLORS,
   readLedState, withEffect, effectColors, withColor, withFactoryColors,
@@ -20,14 +21,15 @@ const SPEED_TEXT = ['Muito lenta', 'Lenta', 'Média', 'Rápida', 'Muito rápida'
  */
 export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) {
   const root = h('div', { class: 'aula-lights' });
-  const status = h('p', { class: 'muted small aula-status' });
+  // Estado da gravação, como etiqueta no topo do cartão de efeitos.
+  const status = h('span', { class: 'aula-status', role: 'status' });
   let block = null; // bloco de luz (128 bytes)
   let table = null; // tabela de cores
   let busy = Promise.resolve();
 
   const say = (text, kind = '') => {
     status.textContent = text;
-    status.className = 'small aula-status ' + (kind === 'error' ? 'error' : 'muted');
+    status.className = 'aula-status ' + (kind || 'ok');
   };
 
   async function load() {
@@ -50,7 +52,7 @@ export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) 
 
   /** Grava em fila: uma mudança por vez, na ordem em que foram feitas. */
   function save(task) {
-    say('Salvando no teclado…');
+    say('Salvando no teclado…', 'saving');
     busy = busy.then(task).then(
       () => say('Salvo no teclado.'),
       (err) => say(`Não foi salvo: ${err.message || err}. Aproxime o teclado do dongle e tente de novo.`, 'error'),
@@ -111,7 +113,7 @@ export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) 
     const known = EFFECTS.find((e) => e.code === effect);
     const colors = effectColors(table, effect);
 
-    const effects = card('Efeito',
+    const effects = iconCard('sparkles', 'Efeito', { className: 'aula-card', aside: status },
       h('div', { class: 'preset-grid aula-effects' }, EFFECTS.map((e) => h('button', {
         class: 'btn' + (e.code === effect ? ' selected' : ''),
         'aria-pressed': String(e.code === effect),
@@ -120,8 +122,8 @@ export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) 
       known ? null : h('p', { class: 'muted small' }, `O teclado está num efeito que o UniHub ainda não conhece (código ${effect}).`));
 
     const shown = Math.min(brightness, maxBrightness);
-    const brightnessValue = h('strong', {}, shown === 0 ? 'Apagado' : `${shown}`);
-    const speedValue = h('strong', {}, SPEED_TEXT[speed] ?? speed);
+    const brightnessValue = h('span', { class: 'aula-value' }, shown === 0 ? 'Apagado' : `${shown}`);
+    const speedValue = h('span', { class: 'aula-value' }, SPEED_TEXT[speed] ?? speed);
 
     const swatches = colors.map((hex, i) => {
       const dot = h('span', { class: 'swatch-dot', style: `background:${hex}` });
@@ -141,31 +143,35 @@ export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) 
 
     const showColors = known?.colors !== false;
     const showSpeed = known?.speed !== false;
-    const settings = card(`Ajustes de ${known ? known.name : 'efeito'}`,
+    // Controle deslizante com o nome e o valor em cima e as pontas embaixo.
+    const slider = (label, value, ends, input) => h('label', { class: 'aula-field' },
+      h('span', { class: 'aula-field-head' }, h('span', {}, label), value),
+      input,
+      h('span', { class: 'aula-ends muted small', 'aria-hidden': 'true' }, h('span', {}, ends[0]), h('span', {}, ends[1])));
+
+    const settings = iconCard('equalizer', `Ajustes de ${known ? known.name : 'efeito'}`, { className: 'aula-card' },
       h('p', { class: 'muted small' }, 'Cada efeito guarda o próprio brilho, velocidade e cores.'),
-      h('label', { class: 'aula-field' }, h('span', {}, 'Brilho ', brightnessValue),
-        h('input', {
-          type: 'range', min: 0, max: maxBrightness, step: 1, value: Math.min(brightness, maxBrightness),
-          oninput: (e) => { brightnessValue.textContent = e.target.value === '0' ? 'Apagado' : e.target.value; },
-          onchange: (e) => change({ brightness: Number(e.target.value) }),
-        })),
-      !showSpeed ? null : h('label', { class: 'aula-field' }, h('span', {}, 'Velocidade ', speedValue),
-        h('input', {
-          type: 'range', min: 0, max: MAX_SPEED, step: 1, value: speed,
-          oninput: (e) => { speedValue.textContent = SPEED_TEXT[e.target.value]; },
-          onchange: (e) => change({ speed: Number(e.target.value) }),
-        })),
+      slider('Brilho', brightnessValue, ['Apagado', 'Máximo'], h('input', {
+        type: 'range', min: 0, max: maxBrightness, step: 1, value: Math.min(brightness, maxBrightness),
+        oninput: (e) => { brightnessValue.textContent = e.target.value === '0' ? 'Apagado' : e.target.value; },
+        onchange: (e) => change({ brightness: Number(e.target.value) }),
+      })),
+      !showSpeed ? null : slider('Velocidade', speedValue, [SPEED_TEXT[0], SPEED_TEXT[MAX_SPEED]], h('input', {
+        type: 'range', min: 0, max: MAX_SPEED, step: 1, value: speed,
+        oninput: (e) => { speedValue.textContent = SPEED_TEXT[e.target.value]; },
+        onchange: (e) => change({ speed: Number(e.target.value) }),
+      })),
       // Efeito só colorido: sem escolha de cor (o colorido é gravado ao escolher o efeito).
-      !showColors ? null : h('div', { class: 'aula-field' },
+      !showColors ? null : h('div', { class: 'aula-field aula-colors' },
         h('span', {}, 'Cor'),
         h('div', { class: 'light-swatches aula-swatches' }, swatches, colorful),
         h('small', { class: 'muted' }, `Clique numa cor para usar; clique de novo para trocá-la. São ${COLORS_PER_EFFECT} cores guardadas por efeito.`),
         h('div', { class: 'row' }, button('Restaurar cores', restoreColors, {
           disabled: colors.every((hex, i) => hex === FACTORY_COLORS[i]),
         }))),
-      showColors ? null : h('p', { class: 'muted small aula-field' }, 'Este efeito usa as próprias cores (colorido).'));
+      showColors ? null : h('p', { class: 'muted small aula-field aula-colors' }, 'Este efeito usa as próprias cores (colorido).'));
 
-    clear(root, h('div', { class: 'aula-lights-grid' }, effects, settings), status);
+    clear(root, h('div', { class: 'aula-lights-grid' }, effects, settings));
   }
 
   load();

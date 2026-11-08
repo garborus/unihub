@@ -237,7 +237,12 @@ const DEFAULT_HINT = 'Clique nesta janela e aperte qualquer botão do controle p
 export function gamepadVisualTester({ select = (pads) => pads, hint: hintText = () => DEFAULT_HINT, art = null, extraPressed = () => [] } = {}) {
   const root = h('div', { class: 'gp-tester' });
   const visuals = new Map(); // gamepad.index -> visual
-  const hint = h('div', { class: 'empty' });
+  // Sem controle mostrado: desenho do controle "esperando", título e a dica.
+  const hintText_ = h('p', { class: 'muted small' });
+  const hint = h('div', { class: 'gp-waiting' },
+    h('span', { class: 'gp-waiting-art', 'aria-hidden': 'true' }, controllerSvg('gp-waiting-svg', XBOX_PAD_PATH).svg),
+    h('strong', {}, 'Aperte um botão do controle'),
+    hintText_);
 
   const timer = setInterval(() => {
     if (!root.isConnected) {
@@ -268,7 +273,7 @@ export function gamepadVisualTester({ select = (pads) => pads, hint: hintText = 
     hint.hidden = pads.length > 0;
     if (!hint.hidden) {
       const text = all.length ? hintText(all) : DEFAULT_HINT;
-      if (hint.textContent !== text) hint.textContent = text;
+      if (hintText_.textContent !== text) hintText_.textContent = text;
     }
   }, TICK_MS);
 

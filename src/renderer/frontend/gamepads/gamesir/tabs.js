@@ -5,6 +5,7 @@ import { toHex } from '../../../core/bytes.js';
 import { PROFILE_SLOTS, REPORT_RATES } from '../../../plugins/gamepads/gamesir/protocol.js';
 import { BUTTONS, EXTRA_KEYS, parseMapping, parsePaddle, buildMapping, buildPaddle, countRemapped, targetName } from '../../../plugins/gamepads/gamesir/mapping.js';
 import { infoCard, vidPidRow } from '../../../shared/info-card.js';
+import { iconCard } from '../../../shared/icon-card.js';
 
 export function deviceTab(session, label, vidPid, model, ctx) {
   const firmware = h('strong', {}, '…');
@@ -82,7 +83,7 @@ function reportRateCard(session, rates, ctx) {
 
   render();
   load();
-  return card('Taxa de relatório',
+  return iconCard('gauge', 'Taxa de relatório', {},
     h('p', { class: 'muted small' }, 'Quantas vezes por segundo o controle envia o estado dos botões ao PC. Valores maiores respondem mais rápido; se um jogo travar ou falhar, tente um valor menor.'),
     buttons,
     status);
@@ -182,7 +183,7 @@ function exportProfilesCard(session, ctx) {
   }
 
   render();
-  const el = card('Exportar perfis',
+  const el = iconCard('download', 'Exportar perfis', {},
     h('p', { class: 'muted small' }, 'Guarda uma cópia de cada perfil num arquivo no computador. Isto não muda nada no controle: o mapeamento já é salvo sozinho.'),
     list,
     allBtn);
@@ -195,7 +196,7 @@ export function profilesTab(session, ctx, model) {
   return h('div', { class: 'device-cards mapping-page' },
     MAPPING_MODELS.includes(model)
       ? mappingEditor(session, ctx, { onActiveChange: (n) => exporter.setActive(n) })
-      : card('Mapeamento de botões', h('p', { class: 'muted' }, 'Ainda não disponível para este modelo.')),
+      : iconCard('mapping', 'Mapeamento de botões', {}, h('p', { class: 'muted' }, 'Ainda não disponível para este modelo.')),
     exporter.element,
   );
 }
@@ -474,7 +475,7 @@ function mappingEditor(session, ctx, { onActiveChange } = {}) {
   renderProfiles();
 
   // O perfil também pode ser trocado pelo próprio controle: confere de tempos em tempos.
-  const root = card('Mapeamento de botões',
+  const root = iconCard('mapping', 'Mapeamento de botões', {},
     h('p', { class: 'muted small' }, 'Escolha o que cada botão faz. A mudança é gravada no controle na hora, no perfil que você está editando.'),
     profileRow, activeNote, body, h('div', { class: 'row' }, status));
   const timer = setInterval(() => {

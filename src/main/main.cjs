@@ -5,7 +5,7 @@
 // com APIs padrão da web (WebHID, Gamepad API e Web Audio), sem módulos
 // nativos. DLL própria só para o que a web não alcança; ver "Código nativo" no README.
 
-const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, nativeTheme, screen, session, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, Tray, dialog, globalShortcut, nativeImage, nativeTheme, screen, session, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
@@ -66,7 +66,7 @@ function setupHidPermissions() {
 // menuPinned: com o menu à esquerda, fica aberto (true) ou recolhido (false);
 // theme: cores do app (botão Temas).
 const DEFAULT_SETTINGS = { autoStart: false, tray: false, menuPosition: 'top', menuPinned: true, theme: 'graphite', language: 'pt' };
-const ALLOWED_VALUES = { menuPosition: ['top', 'left'], theme: ['light', 'dark', 'graphite', 'plum'], language: ['auto', 'pt', 'en', 'es'] };
+const ALLOWED_VALUES = { menuPosition: ['top', 'left'], theme: ['light', 'dark', 'graphite', 'purple', 'lilac'], language: ['auto', 'pt', 'en', 'es'] };
 
 // Cores da janela em cada tema (as mesmas do styles.css): fundo ao abrir e a
 // faixa dos botões minimizar/maximizar/fechar, que o Windows desenha.
@@ -74,7 +74,8 @@ const THEME_COLORS = {
   graphite: { bg: '#14161a', bar: '#1c1f25', symbol: '#e7e9ee' },
   dark: { bg: '#050506', bar: '#0c0d0f', symbol: '#ececef' },
   light: { bg: '#dcdad4', bar: '#e7e5e0', symbol: '#1b1f27' },
-  plum: { bg: '#250827', bar: '#320b35', symbol: '#f2edc4' },
+  purple: { bg: '#1a1124', bar: '#23172f', symbol: '#f4ecff' },
+  lilac: { bg: '#bc96ec', bar: '#c9aaf0', symbol: '#23103a' },
 };
 // Faixa dos botões da janela: 1 px menor que o cabeçalho (52 px), para não
 // cobrir a linha de baixo dele, que assim vai até a borda direita.
@@ -83,7 +84,7 @@ const themeColors = () => THEME_COLORS[settings.theme] || THEME_COLORS.graphite;
 
 function applyTheme() {
   // Menus do Windows (o do ícone da bandeja) claros ou escuros, como o tema.
-  nativeTheme.themeSource = settings.theme === 'light' ? 'light' : 'dark';
+  nativeTheme.themeSource = settings.theme === 'light' || settings.theme === 'lilac' ? 'light' : 'dark';
   if (!mainWindow) return;
   const c = themeColors();
   mainWindow.setBackgroundColor(c.bg);
@@ -93,13 +94,23 @@ const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 
 function loadSettings() {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    // O tema Ameixa saiu; quem usava passa para o Roxo, o mais parecido.
+    if (saved.theme === 'plum') saved.theme = 'purple';
+    return { ...DEFAULT_SETTINGS, ...saved };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
 let settings = DEFAULT_SETTINGS;
+
+function saveSettings() {
+  try {
+    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2));
+  } catch { /* sem gravar: vale só até fechar o app */ }
+}
 let mainWindow = null;
 
 // --- Bandeja do sistema -------------------------------------------------------
@@ -207,10 +218,7 @@ ipcMain.handle('settings:set', (_event, key, value) => {
   if (key === 'tray') applyTray(value);
   if (key === 'language') applyTrayMenu();
   if (key === 'theme') applyTheme();
-  try {
-    fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-    fs.writeFileSync(settingsFile(), JSON.stringify(settings, null, 2));
-  } catch { /* sem gravar: vale só até fechar o app */ }
+  saveSettings();
   return settingsForPage();
 });
 
@@ -279,13 +287,19 @@ ipcMain.on('tray-batteries', (_event, items) => {
 ipcMain.handle('open-sound-settings', () => shell.openExternal('ms-settings:sound'));
 
 // --- Sons (aba Sons) ------------------------------------------------------------
-// Os áudios que a pessoa adiciona são copiados para uma pasta do app, então
-// continuam tocando mesmo se o arquivo original mudar de lugar. A página só
-// recebe o nome e os bytes; nenhum caminho do disco passa para ela.
+// Os áudios que a pessoa adiciona são copiados para a pasta dos sons, então
+// continuam tocando mesmo se o arquivo original mudar de lugar. A pasta padrão é
+// MúsicasUniHub (fácil de achar e fora de pastas de projeto); antes era dentro
+// dos dados do app, e os sons de lá são movidos uma vez ao abrir. Pode ser outra
+// pasta que a pessoa escolher; fica em settings.soundsFolder,
+// que a página não muda por settings:set, só pela janela de escolher pasta.
+// A página recebe o nome e os bytes de cada som e o caminho da pasta, só para mostrar.
 
 const SOUND_EXTENSIONS = ['mp3', 'wav', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'flac', 'webm'];
 const SOUND_MAX_BYTES = 50 * 1024 * 1024;
-const soundsDir = () => path.join(app.getPath('userData'), 'sons');
+const defaultSoundsDir = () => path.join(app.getPath('music'), 'UniHub');
+const legacySoundsDir = () => path.join(app.getPath('userData'), 'sons');
+const soundsDir = () => settings.soundsFolder || defaultSoundsDir();
 
 function listSounds() {
   try {
@@ -305,11 +319,134 @@ function soundPath(id) {
   return listSounds().some((s) => s.id === id) ? file : null;
 }
 
-function freeName(base, ext) {
+function freeName(base, ext, dir = soundsDir()) {
   for (let n = 1; ; n++) {
     const name = n === 1 ? `${base}${ext}` : `${base} (${n})${ext}`;
-    if (!fs.existsSync(path.join(soundsDir(), name))) return name;
+    if (!fs.existsSync(path.join(dir, name))) return name;
   }
+}
+
+const sameFolder = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+
+// Textos das janelas do Windows da pasta dos sons, que ficam fora da página.
+const FOLDER_TEXT = {
+  pt: { title: 'Escolher a pasta dos sons', ask: (n) => (n === 1 ? 'Mover o som para a nova pasta?' : `Mover os ${n} sons para a nova pasta?`), detail: 'Se deixar, eles ficam na pasta antiga e só voltam a aparecer na aba quando você escolher essa pasta de novo.', move: 'Mover', keep: 'Deixar onde estão', cancel: 'Cancelar' },
+  en: { title: 'Choose the sounds folder', ask: (n) => (n === 1 ? 'Move the sound to the new folder?' : `Move the ${n} sounds to the new folder?`), detail: 'If you leave them, they stay in the old folder and only show in the tab again when you pick that folder again.', move: 'Move', keep: 'Leave them', cancel: 'Cancel' },
+  es: { title: 'Elegir la carpeta de sonidos', ask: (n) => (n === 1 ? '¿Mover el sonido a la nueva carpeta?' : `¿Mover los ${n} sonidos a la nueva carpeta?`), detail: 'Si los dejas, se quedan en la carpeta anterior y solo vuelven a aparecer en la pestaña cuando elijas esa carpeta otra vez.', move: 'Mover', keep: 'Dejarlos', cancel: 'Cancelar' },
+};
+
+/**
+ * Pasta para a página. `music`: o caminho dentro de Músicas (ex.: "UniHub"),
+ * para mostrar curto ("Músicas › UniHub"); null se a pasta for fora de Músicas.
+ */
+function soundsFolderInfo() {
+  const dir = soundsDir();
+  const rel = path.relative(app.getPath('music'), dir);
+  const inMusic = rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  return { path: dir, custom: !!settings.soundsFolder, music: inMusic ? rel.split(path.sep).join(' › ') : null };
+}
+
+/**
+ * Mudança única: sons da pasta antiga (dentro dos dados do app) vão para a
+ * padrão nova. Copia todos primeiro e só apaga os originais se todos deram certo;
+ * se algum falhar, desfaz as cópias e continua usando a pasta antiga (como
+ * escolhida), para nenhum som sumir da aba. Os atalhos seguem o som renomeado.
+ */
+function migrateLegacySounds() {
+  if (settings.soundsFolder) return;
+  const legacy = legacySoundsDir();
+  const target = defaultSoundsDir();
+  let files;
+  try {
+    files = fs.readdirSync(legacy, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return; // sem pasta antiga: nada a mover
+  }
+  const copied = [];
+  try {
+    fs.mkdirSync(target, { recursive: true });
+    for (const name of files) {
+      const to = freeName(path.parse(name).name, path.extname(name), target);
+      fs.copyFileSync(path.join(legacy, name), path.join(target, to));
+      copied.push([name, to]);
+    }
+  } catch (err) {
+    for (const [, to] of copied) fs.rmSync(path.join(target, to), { force: true });
+    settings.soundsFolder = legacy;
+    saveSettings();
+    console.warn('Sons: não foi possível mover para Músicas; fica a pasta antiga.', err.message);
+    return;
+  }
+  for (const [name] of copied) fs.rmSync(path.join(legacy, name), { force: true });
+  // O Windows pode demorar um instante para soltar os arquivos apagados: tenta de
+  // novo. Só remove a pasta se estiver vazia (algo que não é nosso fica).
+  try {
+    if (fs.readdirSync(legacy).length === 0) fs.rmSync(legacy, { recursive: true, maxRetries: 5, retryDelay: 100 });
+  } catch { /* fica para a próxima vez que o app abrir */ }
+  const renamed = copied.filter(([a, b]) => a !== b);
+  if (renamed.length && settings.soundHotkeys) {
+    const map = { ...settings.soundHotkeys };
+    for (const [a, b] of renamed) if (map[a]) { map[b] = map[a]; delete map[a]; }
+    settings.soundHotkeys = map;
+    saveSettings();
+  }
+}
+
+/**
+ * Troca a pasta dos sons. Se a pasta atual tem sons, pergunta se move para a nova.
+ * Devolve { folder, sounds, failed }, { folder, sounds, error } ou null se cancelar.
+ */
+async function changeSoundsFolder(target) {
+  const done = (extra = {}) => ({ folder: soundsFolderInfo(), sounds: listSounds(), ...extra });
+  const old = soundsDir();
+  if (sameFolder(old, target)) return done();
+  // A pasta precisa existir e aceitar arquivos.
+  try {
+    fs.mkdirSync(target, { recursive: true });
+    const probe = path.join(target, `.unihub-${process.pid}.tmp`);
+    fs.writeFileSync(probe, '');
+    fs.rmSync(probe, { force: true });
+  } catch (err) {
+    return done({ error: err.message });
+  }
+  const current = listSounds();
+  let move = false;
+  if (current.length) {
+    const text = FOLDER_TEXT[activeLanguage()] || FOLDER_TEXT.pt;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'question',
+      message: text.ask(current.length),
+      detail: text.detail,
+      buttons: [text.move, text.keep, text.cancel],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (response === 2) return null;
+    move = response === 0;
+  }
+  const failed = [];
+  if (move) {
+    for (const { id } of current) {
+      const from = path.join(old, id);
+      const to = path.join(target, freeName(path.parse(id).name, path.extname(id), target));
+      try {
+        try {
+          fs.renameSync(from, to);
+        } catch {
+          // Outro disco: copia e só então apaga o original.
+          fs.copyFileSync(from, to);
+          fs.rmSync(from, { force: true });
+        }
+      } catch {
+        failed.push(id);
+      }
+    }
+  }
+  if (sameFolder(target, defaultSoundsDir())) delete settings.soundsFolder;
+  else settings.soundsFolder = path.resolve(target);
+  saveSettings();
+  return done({ failed });
 }
 
 ipcMain.handle('sounds:list', () => listSounds());
@@ -342,9 +479,17 @@ ipcMain.handle('sounds:read', (_event, id) => {
 });
 
 // Apaga só a cópia guardada pelo app; o arquivo original da pessoa fica onde estava.
+// O atalho do som, se tinha, sai junto.
 ipcMain.handle('sounds:remove', (_event, id) => {
   const file = soundPath(id);
   if (file) fs.rmSync(file, { force: true });
+  if (file && soundHotkeys()[id]) {
+    const map = { ...soundHotkeys() };
+    delete map[id];
+    settings = { ...settings, soundHotkeys: map };
+    applySoundHotkeys();
+    saveSettings();
+  }
   return listSounds();
 });
 
@@ -369,9 +514,12 @@ const MIC_EFFECT_SCRIPT = [
   '$r = Get-ChildItem $base | Where-Object { (Get-ItemProperty $_.PSPath).DeviceState -eq 1 } | ForEach-Object {',
   '  $p = Get-ItemProperty "$($_.PSPath)\\Properties" -ErrorAction SilentlyContinue',
   '  $fx = Get-Item "$($_.PSPath)\\FxProperties" -ErrorAction SilentlyContinue',
+  // Efeito de fluxo (,13: versões antigas) ou de ponta (,15: vale também nas chamadas).
   "  $l = if ($fx) { @($fx.GetValue('{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},13')) -join '' } else { '' }",
+  "  $e = if ($fx) { @($fx.GetValue('{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15')) } else { @() }",
   "  [pscustomobject]@{ id = $_.PSChildName; name = $p.'{a45c254e-df1c-4efd-8020-67d146a850e0},2';",
-  "    device = $p.'{b3f8fa53-0004-438e-9003-51a46e139bfc},6'; installed = ($l -like '*" + AUDIO_MIX_CLSID + "*') }",
+  "    device = $p.'{b3f8fa53-0004-438e-9003-51a46e139bfc},6'; installed = ($l -like '*" + AUDIO_MIX_CLSID + "*') -or ($e -contains '" + AUDIO_MIX_CLSID + "');",
+  "    calls = ($e -contains '" + AUDIO_MIX_CLSID + "') }",
   '}',
   'ConvertTo-Json @($r) -Compress',
 ].join('\n');
@@ -401,12 +549,19 @@ ipcMain.handle('mic-effect:status', () => new Promise((resolve) => {
         const list = JSON.parse(stdout.trim() || '[]');
         mics = (Array.isArray(list) ? list : [list])
           .filter((m) => m && MIC_ID.test(m.id))
-          .map((m) => ({ id: m.id, name: String(m.name || ''), device: String(m.device || ''), installed: !!m.installed }));
+          .map((m) => ({ id: m.id, name: String(m.name || ''), device: String(m.device || ''), installed: !!m.installed, calls: !!m.calls }));
       } catch { /* sem lista */ }
       const active = built ? (await runBridge(['--estado'])).code === 0 : false;
       resolve({ built, mics, active });
     });
 }));
+
+// Só se algum app está usando o microfone com o efeito (canal aberto): rápido,
+// sem a lista de microfones, para a aba conferir de tempos em tempos.
+ipcMain.handle('mic-effect:active', async () => {
+  if (process.platform !== 'win32' || !fs.existsSync(AUDIO_MIX_BRIDGE)) return false;
+  return (await runBridge(['--estado'])).code === 0;
+});
 
 // Roda instalar.ps1 ou remover.ps1 como administrador (o Windows pede a permissão).
 // Devolve { ok, message }: 1223 = a pessoa recusou o pedido de administrador.
@@ -547,6 +702,96 @@ ipcMain.handle('update:open-page', (_event, url) => {
   if (typeof url === 'string' && url.startsWith(`https://github.com/${updates.REPO}/releases`)) shell.openExternal(url);
 });
 
+// --- Atalhos dos sons ----------------------------------------------------------
+// Cada som pode ter um atalho global (ex.: "Ctrl+Shift+1", "F9", "num5"), que
+// funciona com o UniHub em segundo plano, inclusive dentro de jogos. Ficam em
+// settings.soundHotkeys ({ id do som: atalho }). Quando o atalho é apertado, a
+// página recebe 'sounds:hotkey' com o id e toca o som.
+
+const registeredHotkeys = new Set();
+
+function soundHotkeys() {
+  const map = settings.soundHotkeys;
+  return map && typeof map === 'object' ? map : {};
+}
+
+/** Registra de novo todos os atalhos; devolve os que o Windows recusou (outro app já usa). */
+function applySoundHotkeys() {
+  for (const acc of registeredHotkeys) globalShortcut.unregister(acc);
+  registeredHotkeys.clear();
+  const failed = [];
+  for (const [id, acc] of Object.entries(soundHotkeys())) {
+    try {
+      if (globalShortcut.register(acc, () => mainWindow?.webContents.send('sounds:hotkey', id))) registeredHotkeys.add(acc);
+      else failed.push(id);
+    } catch {
+      failed.push(id);
+    }
+  }
+  return failed;
+}
+
+const hotkeysForPage = (extra = {}) => ({ hotkeys: soundHotkeys(), ...extra });
+
+ipcMain.handle('sounds:hotkeys', () => hotkeysForPage({ failed: applySoundHotkeys() }));
+
+// Enquanto a página grava um atalho novo, os atuais ficam desligados.
+ipcMain.handle('sounds:hotkeys-pause', (_event, paused) => {
+  if (paused) {
+    for (const acc of registeredHotkeys) globalShortcut.unregister(acc);
+    registeredHotkeys.clear();
+  } else {
+    applySoundHotkeys();
+  }
+});
+
+// Liga (ou tira, com null) o atalho de um som. Um atalho só vale para um som:
+// se já era de outro, passa para este.
+ipcMain.handle('sounds:set-hotkey', (_event, id, accelerator) => {
+  if (typeof id !== 'string' || id !== path.basename(id)) return hotkeysForPage({ error: 'som inválido' });
+  const map = { ...soundHotkeys() };
+  if (accelerator === null) {
+    delete map[id];
+  } else {
+    // De 1 a 3 teclas (a principal e até dois modificadores), como a página permite.
+    if (typeof accelerator !== 'string' || accelerator.length > 60 || !/^[A-Za-z0-9+=\-[\];',./\\`]+$/.test(accelerator)
+      || accelerator.split('+').length > 3) {
+      return hotkeysForPage({ error: 'atalho inválido' });
+    }
+    for (const [other, acc] of Object.entries(map)) if (acc.toLowerCase() === accelerator.toLowerCase()) delete map[other];
+    map[id] = accelerator;
+  }
+  settings = { ...settings, soundHotkeys: map };
+  const failed = applySoundHotkeys();
+  if (accelerator !== null && failed.includes(id)) {
+    // O Windows não deixou (outro app já usa esse atalho): não guarda.
+    delete map[id];
+    settings = { ...settings, soundHotkeys: map };
+    applySoundHotkeys();
+    saveSettings();
+    return hotkeysForPage({ error: 'em uso' });
+  }
+  saveSettings();
+  return hotkeysForPage();
+});
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
+
+ipcMain.handle('sounds:folder', () => soundsFolderInfo());
+
+ipcMain.handle('sounds:choose-folder', async () => {
+  const text = FOLDER_TEXT[activeLanguage()] || FOLDER_TEXT.pt;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: text.title,
+    defaultPath: soundsDir(),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return changeSoundsFolder(result.filePaths[0]);
+});
+
+ipcMain.handle('sounds:reset-folder', () => changeSoundsFolder(defaultSoundsDir()));
+
 // Devolve '' quando abre, ou o motivo de não ter aberto.
 ipcMain.handle('sounds:open-folder', async () => {
   try {
@@ -654,9 +899,11 @@ app.whenReady().then(() => {
   settings.autoStart = app.getLoginItemSettings(loginItem()).openAtLogin;
   if (!settings.autoStart) settings.tray = false;
   setupHidPermissions();
+  migrateLegacySounds(); // antes da janela: a aba já lê a pasta nova
   // Aberto pelo Windows ao ligar o PC, com a bandeja ligada: começa só na bandeja.
   createWindow({ hidden: process.argv.includes(STARTED_HIDDEN) && settings.tray });
   applyTray(settings.tray);
+  applySoundHotkeys();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

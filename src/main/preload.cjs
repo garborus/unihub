@@ -25,8 +25,24 @@ contextBridge.exposeInMainWorld('unihub', {
   readSound: (id) => ipcRenderer.invoke('sounds:read', id),
   removeSound: (id) => ipcRenderer.invoke('sounds:remove', id),
   openSoundsFolder: () => ipcRenderer.invoke('sounds:open-folder'),
+  /** Atalhos dos sons: { hotkeys: { id: atalho }, failed: [ids que o Windows recusou] }. */
+  soundHotkeys: () => ipcRenderer.invoke('sounds:hotkeys'),
+  /** Liga o atalho de um som (null tira): { hotkeys, error? } (error 'em uso' se outro app já usa). */
+  setSoundHotkey: (id, accelerator) => ipcRenderer.invoke('sounds:set-hotkey', id, accelerator),
+  /** Desliga (true) ou religa (false) os atalhos enquanto a página grava um novo. */
+  pauseSoundHotkeys: (paused) => ipcRenderer.invoke('sounds:hotkeys-pause', paused),
+  /** Chamado com o id do som quando o atalho dele é apertado, mesmo com o UniHub em segundo plano. */
+  onSoundHotkey: (callback) => ipcRenderer.on('sounds:hotkey', (_event, id) => callback(id)),
+  /** Pasta dos sons: { path, custom }. */
+  soundsFolder: () => ipcRenderer.invoke('sounds:folder'),
+  /** Escolhe outra pasta; null se cancelar, senão { folder, sounds, failed } ou { folder, sounds, error }. */
+  chooseSoundsFolder: () => ipcRenderer.invoke('sounds:choose-folder'),
+  /** Volta para a pasta do app, com o mesmo retorno de chooseSoundsFolder. */
+  resetSoundsFolder: () => ipcRenderer.invoke('sounds:reset-folder'),
   /** Efeito no microfone: { built, mics: [{ id, name, device, installed }], active }. */
   micEffectStatus: () => ipcRenderer.invoke('mic-effect:status'),
+  /** true enquanto algum app usa o microfone com o efeito. */
+  micEffectActive: () => ipcRenderer.invoke('mic-effect:active'),
   /** Instala/remove o efeito (o Windows pede administrador): { ok, cancelled, message }. */
   micEffectInstall: (micId) => ipcRenderer.invoke('mic-effect:install', micId),
   micEffectRemove: () => ipcRenderer.invoke('mic-effect:remove'),

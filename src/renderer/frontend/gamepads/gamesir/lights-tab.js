@@ -7,6 +7,7 @@ import { h, clear, card, button } from '../../../core/dom.js';
 import { controllerSvg, XBOX_PAD_PATH } from '../../../shared/controller-art.js';
 import { openColorPicker } from '../../../shared/color-picker.js';
 import { PROFILE_SLOTS } from '../../../plugins/gamepads/gamesir/protocol.js';
+import { strokeIcon } from '../../../shared/icon-card.js';
 import {
   LIGHT_SLOT, LIGHT_BLOCK_SIZE, EDITABLE_ANIMATIONS, MAX_KEYFRAMES, MAX_SPEED, STANDBY_OPTIONS,
   LED_LAYOUTS, PRESETS, parseLightBlock, buildLightBlock, changedRange, applyPreset, moveFrame,
@@ -103,6 +104,11 @@ export function lightsTab(session, ctx, model) {
     if (state.frame >= a.keyFrames) state.frame = a.keyFrames - 1;
     clear(root,
       h('div', { class: 'lights-panel' },
+        // Cabeçalho no padrão das outras telas: ícone, título e o estado da gravação.
+        h('div', { class: 'icon-card-head lights-head' },
+          h('span', { class: 'icon-card-icon' }, strokeIcon('sparkles')),
+          h('h3', {}, 'Luzes do controle'),
+          statusEl),
         animationsSection(),
         presetsSection(a),
         framesSection(a),
@@ -120,7 +126,6 @@ export function lightsTab(session, ctx, model) {
             const i = STANDBY_OPTIONS.indexOf(state.model.standbyMinutes);
             state.model.standbyMinutes = STANDBY_OPTIONS[(i + 1) % STANDBY_OPTIONS.length];
           }, { preview: false }))),
-        h('div', { class: 'row' }, statusEl),
       ),
       h('div', { class: 'lights-stage' }, controllerDiagram(a)),
     );

@@ -4,9 +4,13 @@
 # Na ordem:
 #  1. Copia a DLL para C:\Program Files\UniHub\audio-mix.
 #  2. Registra a DLL como componente COM e como efeito de áudio do Windows.
-#  3. Guarda a lista atual de efeitos do microfone num backup (só na primeira vez).
-#  4. Acrescenta o efeito no fim dessa lista (os que já estão lá continuam).
-#  5. Reinicia o serviço de áudio do Windows (o som de todos os apps para por uns segundos).
+#  3. Guarda a lista atual de efeitos de ponta do microfone num backup (só na primeira vez).
+#  4. Acrescenta o efeito no fim dessa lista (os que já estão lá continuam). O efeito de
+#     ponta é o primeiro da cadeia e vale para todos os apps e modos do microfone,
+#     inclusive o "bruto" que apps de chamada como o Discord usam e que pula os
+#     efeitos de fluxo.
+#  5. Desfaz o que versões antigas faziam na lista de efeitos de fluxo.
+#  6. Reinicia o serviço de áudio do Windows (o som de todos os apps para por uns segundos).
 #
 # Para desfazer: remover.ps1.
 
@@ -20,8 +24,11 @@ $clsid = '{6B1F3C2A-8E4D-4F7B-9A15-3C2D7E9F0A41}'
 $pasta = 'C:\Program Files\UniHub\audio-mix'
 $destino = Join-Path $pasta 'UniHubAudioMix.dll'
 $base = "SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture\$Microfone"
-$sfx = '{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},13'   # lista de efeitos de fluxo (modo padrão)
-$backup = Join-Path $pasta ("backup-" + $Microfone.Trim('{}') + ".json")
+$efx = '{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15'   # lista de efeitos de ponta (todos os modos)
+$backupEfx = Join-Path $pasta ("backup-efx-" + $Microfone.Trim('{}') + ".json")
+$sfx = '{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},13'   # lista de efeitos de fluxo (versões antigas)
+$modos = '{d3993a3f-99c2-4402-b5ec-a92a0367664b},5'   # modos dos efeitos de fluxo (versões antigas)
+$backupModos = Join-Path $pasta ("backup-modos-" + $Microfone.Trim('{}') + ".json")
 
 if ($Microfone -notmatch '^\{[0-9a-fA-F-]{36}\}$') { throw "Microfone inválido: $Microfone" }
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -71,20 +78,41 @@ New-ItemProperty $apo 'APOInterface0' -Value '{FD7F2B29-24D0-4B5C-B177-592C39F9C
 #        abre pedindo só isso (o New-ItemProperty pede mais e é recusado).
 $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("$base\FxProperties",
   [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, [Security.AccessControl.RegistryRights]'SetValue, QueryValues')
-$atual = $k.GetValue($sfx)
-if (-not (Test-Path $backup)) {
-  $dados = if ($null -eq $atual) { @{ existia = $false } } else { @{ existia = $true; valor = @($atual) } }
-  $dados | ConvertTo-Json | Set-Content $backup -Encoding UTF8
+$multi = [Microsoft.Win32.RegistryValueKind]::MultiString
+
+# Itens de uma lista de GUIDs do registro, sem o efeito. @(...) por fora: com um
+# item só o PowerShell devolveria texto e o += colaria os dois. O -split separa
+# uma lista que tenha sido gravada colada.
+function Itens($valor) {
+  if ($null -eq $valor) { return ,@() }
+  return ,@(@($valor) | ForEach-Object { $_ -split '(?<=\})(?=\{)' } | Where-Object { $_ -and $_ -ne $clsid })
 }
-# @(...) por fora: com um item só o PowerShell devolveria texto e o += colaria os dois.
-$lista = @()
-if ($null -ne $atual) {
-  $lista = @(@($atual) | ForEach-Object { $_ -split '(?<=\})(?=\{)' } | Where-Object { $_ -and $_ -ne $clsid })
+function Guardar($arquivo, $valor) {
+  if (Test-Path $arquivo) { return }
+  $dados = if ($null -eq $valor) { @{ existia = $false } } else { @{ existia = $true; valor = @($valor) } }
+  $dados | ConvertTo-Json | Set-Content $arquivo -Encoding UTF8
 }
+
+$atualEfx = $k.GetValue($efx)
+Guardar $backupEfx $atualEfx
+$lista = Itens $atualEfx
 $lista += $clsid
-$k.SetValue($sfx, [string[]]$lista, [Microsoft.Win32.RegistryValueKind]::MultiString)
+$k.SetValue($efx, [string[]]$lista, $multi)
+
+# 5. Versões antigas punham o efeito na lista de fluxo e ligavam o modo comunicação
+#    nela. Com o efeito de ponta isso sobra (e somaria o som duas vezes): desfaz.
+$atualSfx = $k.GetValue($sfx)
+if ($null -ne $atualSfx -and (@($atualSfx) -join '') -match [regex]::Escape($clsid)) {
+  $restante = Itens $atualSfx
+  if ($restante.Count) { $k.SetValue($sfx, [string[]]$restante, $multi) } else { $k.DeleteValue($sfx, $false) }
+}
+if (Test-Path $backupModos) {
+  $b = Get-Content $backupModos -Raw | ConvertFrom-Json
+  if ($b.existia) { $k.SetValue($modos, [string[]]$b.valor, $multi) } else { $k.DeleteValue($modos, $false) }
+  Remove-Item $backupModos -Force
+}
 $k.Close()
 
-# 5. Reinicia o áudio
+# 6. Reinicia o áudio
 if ((Get-Service Audiosrv).Status -eq 'Running') { Restart-Service -Name Audiosrv -Force } else { Start-Service -Name Audiosrv }
-Write-Host ("Efeito instalado. Lista de efeitos do microfone: " + ($lista -join ', '))
+Write-Host ("Efeito instalado. Efeitos de ponta do microfone: " + ($lista -join ', '))
