@@ -119,7 +119,7 @@ export function aulaLightsTab(session, { maxBrightness = MAX_BRIGHTNESS } = {}) 
         'aria-pressed': String(e.code === effect),
         onclick: () => selectEffect(e.code),
       }, e.name))),
-      known ? null : h('p', { class: 'muted small' }, `O teclado está num efeito que o UniHub ainda não conhece (código ${effect}).`));
+      known ? null : h('p', { class: 'muted small' }, `O teclado está num efeito que o UnusHub ainda não conhece (código ${effect}).`));
 
     const shown = Math.min(brightness, maxBrightness);
     const brightnessValue = h('span', { class: 'aula-value' }, shown === 0 ? 'Apagado' : `${shown}`);

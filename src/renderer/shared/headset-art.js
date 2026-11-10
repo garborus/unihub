@@ -1,4 +1,4 @@
-// Desenho de headset (próprio do UniHub), usado na lista da aba e na tela
+// Desenho de headset (próprio do UnusHub), usado na lista da aba e na tela
 // "Conecte seu headset".
 
 const NS = 'http://www.w3.org/2000/svg';

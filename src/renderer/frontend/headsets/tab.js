@@ -312,7 +312,7 @@ export default {
           // MCHOSE por Bluetooth: bateria vem do Windows; firmware, só pelo dongle.
           note: /^mchose\b/i.test(g.name)
             ? 'O firmware aparece com o fone conectado pelo dongle.'
-            : 'Opções avançadas desta marca ainda não estão disponíveis no UniHub.',
+            : 'Opções avançadas desta marca ainda não estão disponíveis no UnusHub.',
           label: { name: g.name, connection },
         }) },
         { id: 'audio', label: 'Configurações de áudio', render: () => headsetAudioTab({ matches: soundMatcherFor(g) }) },

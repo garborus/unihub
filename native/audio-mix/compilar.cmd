@@ -10,5 +10,6 @@ call "%VCVARS%" >nul || exit /b 1
 if not exist build mkdir build
 cl /nologo /O2 /EHsc /W4 /utf-8 /wd4815 /LD /Fo:build\ /Fe:build\UniHubAudioMix.dll efeito\MixApo.cpp efeito\TipoDeAudio.cpp /link /DEF:efeito\MixApo.def audiobaseprocessingobject.lib advapi32.lib ole32.lib || exit /b 1
 cl /nologo /O2 /EHsc /W4 /utf-8 /Fo:build\ /Fe:build\ponte.exe ponte\ponte.cpp || exit /b 1
+cl /nologo /O2 /EHsc /W4 /utf-8 /Fo:build\ /Fe:build\saidas.exe saidas\saidas.cpp /link ole32.lib || exit /b 1
 del /q build\*.obj build\*.exp build\*.lib 2>nul
 echo Compilado em %~dp0build

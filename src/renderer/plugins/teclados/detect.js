@@ -69,6 +69,19 @@ export function brandOf(vendorId) {
   return null;
 }
 
+// Teclados virtuais do Windows e do notebook, que não são um teclado de verdade:
+// - PID 0000: aparelho criado pelo próprio Windows (ex.: 045E:0000, teclas de
+//   atalho e botões do notebook convertidos em teclado);
+// - VID 8087 (Intel): hub de sensores e filtro de teclas de atalho do notebook.
+//   A Intel não faz teclados.
+// O teclado do notebook de verdade vem da lista do Windows ("Teclado do notebook").
+const VIRTUAL_VENDORS = new Set([0x8087]);
+
+/** Interface de teclado que é virtual (Windows, Intel), e não um teclado. */
+export function isVirtualKeyboard(device) {
+  return device.productId === 0 || VIRTUAL_VENDORS.has(device.vendorId);
+}
+
 /**
  * Teclados conectados, um por VID:PID.
  * `brand` é 'aula' para os AULA série F (o nome final vem do modelo escolhido).
@@ -97,6 +110,7 @@ export function keyboardGroups(devices) {
       continue;
     }
     if (!list.some(isKeyboardInterface)) continue;
+    if (isVirtualKeyboard(list[0])) continue;
     const names = list.map((d) => (d.productName || '').trim()).filter(Boolean);
     if (list.some(isGameInterface) || names.some((n) => GAMEPAD_NAME.test(n))) continue;
     const named = names.some((n) => KEYBOARD_NAME.test(n));

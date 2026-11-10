@@ -279,7 +279,7 @@ function renderOverview(container) {
     clear(container,
       h('div', { class: 'welcome-page' + (animate ? ' animate' : '') },
         h('section', { class: 'welcome' },
-          h('h2', {}, 'Bem-vindo ao UniHub'),
+          h('h2', {}, 'Bem-vindo ao UnusHub'),
           h('p', { class: 'muted' }, 'Controles, fones e teclados de várias marcas num lugar só, sem instalar o programa de cada fabricante.'),
           h('div', { class: 'welcome-actions' },
             found.length > 1
@@ -291,7 +291,7 @@ function renderOverview(container) {
         h('ol', { class: 'welcome-steps' },
           deviceCount
             ? welcomeStep(1, 'done', 'Aparelhos conectados', deviceCount === 1 ? '1 aparelho encontrado, por cabo, dongle ou Bluetooth.' : `${deviceCount} aparelhos encontrados, por cabo, dongle ou Bluetooth.`)
-            : welcomeStep(1, 'current', 'Conecte seus aparelhos', 'Por cabo, dongle ou Bluetooth. O UniHub reconhece sozinho e eles aparecem aqui.'),
+            : welcomeStep(1, 'current', 'Conecte seus aparelhos', 'Por cabo, dongle ou Bluetooth. O UnusHub reconhece sozinho e eles aparecem aqui.'),
           welcomeStep(2, deviceCount ? 'current' : 'todo', 'Ative as abas que quiser', 'Cada tipo de aparelho tem a sua aba. Só aparecem no menu as que você ativar, e dá para mudar depois.'),
           welcomeStep(3, 'todo', 'Veja e ajuste tudo aqui', 'Bateria, testes e opções de cada aparelho. O Início vira o resumo dos seus periféricos.')),
         !hid.available ? h('div', { class: 'error' }, 'WebHID indisponível neste ambiente.') : null,
@@ -311,26 +311,43 @@ function renderOverview(container) {
   const found = suggestions.filter(canInstall);
   const animate = !overviewAnimated;
   overviewAnimated = true;
+  // Só abas de recurso ativas (ex.: só a Sons) e aparelhos conectados esperando a
+  // aba deles: o Início deixa claro que dá para ativar as abas dos aparelhos.
+  const noDeviceTabs = !installed.some((p) => !isFeature(p));
+  const waiting = found.reduce((n, p) => n + deviceNames(p).length, 0);
+  const askDeviceTabs = cards.length === 0 && found.length > 0;
+  const activateFound = () => (found.length > 1
+    ? button(`Ativar as ${found.length} abas dos aparelhos encontrados`, () => installAll(found), { kind: 'primary' })
+    : button(`Ativar aba ${found[0].name}`, () => installAll(found), { kind: 'primary' }));
   clear(container,
     h('div', { class: 'overview-head' },
       h('div', {},
         h('h2', {}, 'Seus periféricos'),
-        h('p', { class: 'muted small overview-sub' }, cards.length === 0
-          ? 'Nenhum aparelho conectado agora.'
-          : `${cards.length === 1 ? '1 aparelho conectado' : `${cards.length} aparelhos conectados`}. Clique num cartão para abrir a aba dele.`)),
+        h('p', { class: 'muted small overview-sub' }, cards.length
+          ? `${cards.length === 1 ? '1 aparelho conectado' : `${cards.length} aparelhos conectados`}. Clique num cartão para abrir a aba dele.`
+          : askDeviceTabs
+            ? `${waiting === 1 ? '1 aparelho conectado' : `${waiting} aparelhos conectados`}, ainda sem a aba ativada.`
+            : 'Nenhum aparelho conectado agora.')),
       button('Gerenciar abas', openDialog)),
     !hid.available ? h('div', { class: 'error' }, 'WebHID indisponível neste ambiente.') : null,
     cards.length
       ? h('div', { class: 'home-grid' + (animate ? ' animate' : '') }, cards.map((c, i) => { c.style.setProperty('--i', i); return c; }))
-      : h('div', { class: 'empty' }, 'Nenhum aparelho conectado. Ligue um controle, fone ou teclado e ele aparece aqui.'),
+      : askDeviceTabs
+        ? h('div', { class: 'empty overview-ask' },
+          h('p', {}, noDeviceTabs
+            ? 'Você ainda não ativou nenhuma aba de aparelho. Ative a aba dos seus aparelhos para ver bateria, testes e opções aqui no Início.'
+            : 'Ative a aba dos aparelhos encontrados para ver bateria, testes e opções aqui no Início.'),
+          activateFound())
+        : h('div', { class: 'empty' }, 'Nenhum aparelho conectado. Ligue um controle, fone ou teclado e ele aparece aqui.'),
     picks.length ? h('section', { class: 'welcome-picks more-tabs' + (animate ? ' animate' : '') },
       h('div', { class: 'more-tabs-head' },
         h('div', {},
-          h('h3', {}, 'Adicionar mais abas'),
+          h('h3', {}, found.length && noDeviceTabs ? 'Abas dos seus aparelhos' : 'Adicionar mais abas'),
           h('p', { class: 'muted small' }, found.length
-            ? 'Encontramos aparelhos que ainda não têm a aba ativada.'
+            ? 'Encontramos aparelhos que ainda não têm a aba ativada. Cada tipo de aparelho tem a sua aba.'
             : 'Outras abas que você pode usar.')),
-        found.length > 1 ? button(`Ativar as ${found.length} abas dos aparelhos encontrados`, () => installAll(found), { kind: 'primary' }) : null),
+        // Com o aviso acima já oferecendo o botão, aqui não repete.
+        found.length > 1 && !askDeviceTabs ? activateFound() : null),
       pickGrid(suggestions, extras)) : null,
     scanHint,
   );
@@ -397,7 +414,7 @@ function renderDialog() {
         h('button', { class: 'btn secondary dialog-icon-btn', title: 'Fechar', 'aria-label': 'Fechar', onclick: () => dialogEl.close() }, '✕'))),
     h('p', { class: 'muted ext-intro' }, 'Ligue só as abas que você usa; elas aparecem no menu e dá para mudar quando quiser.'),
     group('Aparelhos', 'Para configurar controles, fones, teclados e outros periféricos.', devices),
-    group('Recursos', 'Funções do próprio UniHub, que não precisam de um aparelho conectado.', features),
+    group('Recursos', 'Funções do próprio UnusHub, que não precisam de um aparelho conectado.', features),
     tools.length ? h('details', { class: 'advanced' },
       h('summary', {}, 'Avançado (para desenvolvedores)'),
       h('div', { class: 'ext-list' }, tools.map(extensionItem))) : null,
@@ -535,6 +552,8 @@ extensions.addEventListener('change', ({ detail }) => {
   if (!detail.installed) unmount(detail.id);
   if (dialogEl.open) renderDialog();
   if (detail.installed) toast(`Aba ${plugins.find((p) => p.id === detail.id).name} ativada.`);
+  // A aba pode preparar algo ao ser adicionada (ex.: Sons instala o efeito no microfone).
+  if (detail.installed) plugins.find((p) => p.id === detail.id)?.onInstall?.();
   show(detail.installed && !dialogEl.open ? detail.id : active);
 });
 
@@ -574,20 +593,20 @@ function renderSettings(settings) {
   clear(settingsDialog,
     h('div', { class: 'settings-head' },
       h('h2', {}, 'Configurações'),
-      h('small', { class: 'muted' }, 'UniHub')),
+      h('small', { class: 'muted' }, 'UnusHub')),
     h('div', { class: 'settings-body' },
       h('div', { class: 'settings-col' },
         settingsGroup('Inicialização',
           h('label', { class: 'setting-row' },
             h('span', { class: 'setting-text' },
               h('span', {}, 'Iniciar com o Windows'),
-              h('small', { class: 'muted' }, 'O UniHub abre sozinho quando você liga o computador.')),
+              h('small', { class: 'muted' }, 'O UnusHub abre sozinho quando você liga o computador.')),
             settingToggle('autoStart', settings, redraw)),
           // A bandeja é uma opção de quem inicia com o Windows.
           settings.autoStart ? h('label', { class: 'setting-row sub-setting' },
             h('span', { class: 'setting-text' },
               h('span', {}, 'Mostrar na bandeja do sistema'),
-              h('small', { class: 'muted' }, 'O UniHub fica só como ícone perto do relógio, inclusive ao fechar a janela. Para sair, clique com o botão direito no ícone.')),
+              h('small', { class: 'muted' }, 'O UnusHub fica só como ícone perto do relógio, inclusive ao fechar a janela. Para sair, clique com o botão direito no ícone.')),
             settingToggle('tray', settings, redraw)) : null),
         settingsGroup('Posição do menu',
           h('div', { class: 'segmented', role: 'group', 'aria-label': 'Posição do menu' },

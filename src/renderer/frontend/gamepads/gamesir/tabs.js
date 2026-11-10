@@ -493,7 +493,7 @@ const ACTIVE_POLL_MS = 3000;
 
 export function firmwareTab() {
   return card('Atualização de firmware',
-    h('p', {}, 'Ainda não disponível no UniHub.'),
+    h('p', {}, 'Ainda não disponível no UnusHub.'),
     h('ul', {},
       h('li', {}, 'Os arquivos de firmware são da GameSir e não podem ser redistribuídos por um projeto open source.'),
       h('li', {}, 'O processo de gravação precisa ser documentado e implementado com validação de modelo e CRC antes de ir para usuários.')),

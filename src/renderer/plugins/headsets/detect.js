@@ -80,7 +80,7 @@ const hex4 = (n) => n.toString(16).padStart(4, '0');
 export const vidPidOf = (device) => `${hex4(device.vendorId)}:${hex4(device.productId)}`;
 
 /**
- * Fones sem opções próprias no UniHub (outras marcas), juntando HID e som.
+ * Fones sem opções próprias no UnusHub (outras marcas), juntando HID e som.
  * @param {object} o
  * @param {HIDDevice[]} o.hid           interfaces HID de headset de outras marcas
  * @param {ReturnType<typeof soundHeadsets>} o.sound

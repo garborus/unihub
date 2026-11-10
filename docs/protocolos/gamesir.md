@@ -5,7 +5,7 @@ tamanhos e comportamentos da interface de configuração dos controles GameSir.
 
 Legenda:
 - **✓**: confirmado com hardware (GameSir Cyclone 2, pela WebHID).
-- **(não confirmado)**: ainda não testado com hardware pelo UniHub.
+- **(não confirmado)**: ainda não testado com hardware pelo UnusHub.
 
 ## Identificação
 
@@ -169,7 +169,7 @@ no offset 46 de cada perfil de botões** (slots 1–4) e guarda uma "marcha":
 
 - Ler: `0x04, slot, 0x00, 0x2E, 0x01` → resposta com 1 byte.
 - Gravar: `0x03, slot, 0x00, 0x2E, 0x01, marcha` → confirmação `0x06`.
-- O UniHub grava a mesma marcha nos 4 perfis, para a taxa não mudar ao trocar de perfil.
+- O UnusHub grava a mesma marcha nos 4 perfis, para a taxa não mudar ao trocar de perfil.
 
 ### Leitura e gravação de blocos ✓
 
@@ -222,7 +222,7 @@ que está sendo editado.
 
 ## Heartbeat ✓
 
-O UniHub manda `0xF2` a cada 1 s, só com a janela em foco. Sem o heartbeat o
+O UnusHub manda `0xF2` a cada 1 s, só com a janela em foco. Sem o heartbeat o
 controle não envia o relatório de estado `0x12`.
 
 ## Fila e confirmação
@@ -239,4 +239,4 @@ suportar isso seria preciso:
 2. Implementá-lo validando modelo (PID/VID gravado no arquivo) e CRC antes de gravar.
 3. **Não** distribuir os arquivos de firmware: o usuário obtém o arquivo do fabricante.
 
-Um erro nessa etapa pode inutilizar o controle. Por isso ela não está no UniHub.
+Um erro nessa etapa pode inutilizar o controle. Por isso ela não está no UnusHub.

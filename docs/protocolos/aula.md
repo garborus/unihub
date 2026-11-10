@@ -89,7 +89,7 @@ Códigos de efeito (a ordem da lista de efeitos; **confirmados: 1 e 2**):
 estrela, 9 desaparecimento em sombra, 10 cobra retrô, 11 fluxo de neon,
 12 reação, 13 onda senoidal, 14 digitalização contínua, 15 moinho de vento
 giratório, 16 cachoeira colorida, 17 florescendo, 18 tempestade giratória
-(fora da lista do UniHub).
+(fora da lista do UnusHub).
 
 ### Tabela de cores
 
@@ -131,7 +131,7 @@ Interface `0xFF00` do teclado (`258A:010C`), relatório de configuração (featu
 **Ainda não confirmado:** os códigos de efeito de 3 a 18 e o "desligado". O app oficial aberto ao mesmo
 tempo mistura as respostas pelo receptor: as leituras vêm incompletas. Com o
 sinal fraco, ou com o cabo ligado e a chave no sem fio, pacotes se perdem: o
-UniHub soma os pacotes de várias leituras e reenvia o pacote de gravação sem
+UnusHub soma os pacotes de várias leituras e reenvia o pacote de gravação sem
 confirmação (confirmado com F75).
 
 ## Funções do teclado ainda não implementadas

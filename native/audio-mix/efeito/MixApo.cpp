@@ -22,7 +22,16 @@ static HMODULE g_modulo = nullptr;
 // Diagnóstico: uma linha por evento em C:\ProgramData\UniHub\audio-mix.log (a pasta é
 // criada pelo instalar.ps1 com escrita liberada para o serviço de áudio).
 // Nunca chamado de dentro do APOProcess, que é tempo real.
+//
+// Desligado no uso normal. Liga só se existir o arquivo C:\ProgramData\UniHub\log-ligado
+// (conferido uma vez, quando a DLL carrega), e o registro recomeça ao passar de 1 MB.
+static bool LogLigado() {
+  static const bool ligado = GetFileAttributesW(L"C:\\ProgramData\\UniHub\\log-ligado") != INVALID_FILE_ATTRIBUTES;
+  return ligado;
+}
+
 static void Log(const wchar_t* formato, ...) {
+  if (!LogLigado()) return;
   wchar_t texto[512];
   SYSTEMTIME t;
   GetLocalTime(&t);
@@ -38,6 +47,14 @@ static void Log(const wchar_t* formato, ...) {
   HANDLE f = CreateFileW(L"C:\\ProgramData\\UniHub\\audio-mix.log", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                          nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (f == INVALID_HANDLE_VALUE) return;
+  LARGE_INTEGER tamanho;
+  if (GetFileSizeEx(f, &tamanho) && tamanho.QuadPart > 1024 * 1024) {
+    // Passou de 1 MB: recomeça o arquivo (FILE_APPEND_DATA não deixa truncar).
+    CloseHandle(f);
+    f = CreateFileW(L"C:\\ProgramData\\UniHub\\audio-mix.log", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return;
+  }
   DWORD escritos;
   WriteFile(f, utf8, bytes, &escritos, nullptr);
   CloseHandle(f);

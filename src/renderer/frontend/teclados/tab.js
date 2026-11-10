@@ -121,8 +121,8 @@ export default {
             ...(k.vidPid ? [['VID:PID', vidPidRow(k.vidPid.toUpperCase())]] : []),
           ],
           note: aula
-            ? 'Troca de teclas e macros ainda não estão disponíveis no UniHub.'
-            : 'Luzes, macros e perfis desta marca ainda não estão disponíveis no UniHub.',
+            ? 'Troca de teclas e macros ainda não estão disponíveis no UnusHub.'
+            : 'Luzes, macros e perfis desta marca ainda não estão disponíveis no UnusHub.',
           label: { name: k.name, connection: k.connection },
         }) },
         aula && configInterface(k.devices)

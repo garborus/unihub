@@ -2,11 +2,11 @@
 
 Código em `src/renderer/plugins/headsets/logitech/` (`hidpp.js` e `session.js`), usado
 pela aba Headsets para os headsets Logitech. O HID++ tem documentação
-pública da própria Logitech e de projetos como Solaar e libratbag. O UniHub
+pública da própria Logitech e de projetos como Solaar e libratbag. O UnusHub
 implementa só o necessário, a partir dessas especificações.
 
 **Estado:** implementado a partir da especificação, **ainda não testado com
-hardware Logitech** pelo UniHub.
+hardware Logitech** pelo UnusHub.
 
 ## Relatórios
 
@@ -22,7 +22,7 @@ Interfaces: Usage Page `0xFF00` (receptores Unifying/Bolt/Lightspeed) ou `0xFF43
 `[report, índiceDispositivo, índiceFeature, (função << 4) | softwareId, parâmetros…]`
 
 - `índiceDispositivo`: `0xFF` = dispositivo direto; `1–6` = pareados no receptor.
-- `softwareId`: 1–15, identifica nossas respostas (o UniHub usa `0x0B`).
+- `softwareId`: 1–15, identifica nossas respostas (o UnusHub usa `0x0B`).
 - Erro HID++ 2.0: `índiceFeature = 0xFF`, depois `featureOriginal, funçãoOriginal, código`.
 - Erro HID++ 1.0: `0x8F` no lugar do índice da feature.
 

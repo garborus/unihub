@@ -2,15 +2,18 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UniHub</title>
+  <title>UnusHub</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand-row">
-      <div class="brand">UniHub</div>
+      <!-- Nome do app com "Hub" na cor de destaque do tema. -->
+      <div class="brand" aria-label="UnusHub" translate="no">
+        <span class="brand-word" aria-hidden="true">Unus<b>Hub</b></span>
+      </div>
     </div>
     <nav id="tabs" class="tabs" role="tablist"></nav>
     <div class="top-actions">

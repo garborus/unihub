@@ -1,4 +1,4 @@
-// Desenho de controle (próprio do UniHub), usado no editor de luzes e na tela
+// Desenho de controle (próprio do UnusHub), usado no editor de luzes e na tela
 // "Conecte seu controle".
 
 const NS = 'http://www.w3.org/2000/svg';

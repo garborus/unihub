@@ -2,7 +2,7 @@
 // do Electron ("Ctrl+Shift+A", "F9", "num5") e mostra o atalho para a pessoa.
 
 const NAMED = {
-  Space: 'Space', Enter: 'Enter', Tab: 'Tab', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',
+  Space: 'Space', Enter: 'Enter', Tab: 'Tab', Escape: 'Esc', // Esc só com modificador (sozinho cancela a gravação) Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',
   PageUp: 'PageUp', PageDown: 'PageDown', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
   Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.',
   Slash: '/', Backslash: '\\', Backquote: '`',
@@ -40,6 +40,9 @@ export function acceleratorFromEvent(e) {
 
 // Um atalho tem de 1 a 3 teclas: a principal e até dois modificadores (ex.: Shift+F1, Ctrl+Alt+K).
 export const MAX_HOTKEY_KEYS = 3;
+
+/** Id do atalho "parar todos os sons" (o * não existe em nome de arquivo, então não é de um som). */
+export const STOP_HOTKEY_ID = '*parar';
 
 /** Quantas teclas o atalho usa ("Ctrl+Shift+A" = 3). */
 export function hotkeyKeyCount(accelerator) {

@@ -13,6 +13,20 @@ export function isVirtualOutput(label) {
   return VIRTUAL_OUTPUT.test(label || '');
 }
 
+// Aparelhos de som virtuais (cabos e os da Steam): não são onde a pessoa ouve nem
+// o microfone dela, então ficam fora das listas de fone e de microfone.
+const VIRTUAL_DEVICE = /\bcable\b|virtual|voicemeeter|steam streaming/i;
+
+/** O aparelho (saída ou entrada) é virtual? */
+export function isVirtualDevice(label) {
+  return VIRTUAL_DEVICE.test(label || '');
+}
+
+/** Aparelhos de verdade de um tipo, sem os virtuais (para "onde você ouve" e microfones). */
+export function physicalDevices(devices, kind) {
+  return realDevices(devices, kind).filter((d) => !isVirtualDevice(d.label));
+}
+
 /** Saídas reais da lista (sem as entradas "Padrão" e "Comunicação" do Chromium). */
 export function realDevices(devices, kind) {
   return devices.filter((d) => d.kind === kind && d.deviceId !== 'default' && d.deviceId !== 'communications');

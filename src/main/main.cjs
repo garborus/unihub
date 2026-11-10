@@ -18,6 +18,10 @@ const updates = require('./updates.cjs');
 // Chromium volta a usar o XInput e o teste de botões funciona.
 app.commandLine.appendSwitch('disable-features', 'EnableWindowsGamingInputDataFetcher');
 
+// O app se chamava UniHub. As configurações continuam na mesma pasta do AppData
+// (%APPDATA%\UniHub), para ninguém perder tema, abas, atalhos e sons ao atualizar.
+app.setPath('userData', path.join(app.getPath('appData'), 'UniHub'));
+
 // A página do app é carregada do disco; nenhuma origem remota recebe HID.
 function isAppOrigin(origin) {
   return typeof origin === 'string' && origin.startsWith('file:');
@@ -150,9 +154,9 @@ const settingsForPage = () => ({ ...settings, systemLanguage: systemLanguage() }
 
 // Textos do menu da bandeja, que fica fora da página.
 const TRAY_TEXT = {
-  pt: { open: 'Abrir o UniHub', quit: 'Sair' },
-  en: { open: 'Open UniHub', quit: 'Quit' },
-  es: { open: 'Abrir UniHub', quit: 'Salir' },
+  pt: { open: 'Abrir o UnusHub', quit: 'Sair' },
+  en: { open: 'Open UnusHub', quit: 'Quit' },
+  es: { open: 'Abrir UnusHub', quit: 'Salir' },
 };
 
 /** Mostra a janela já no aparelho escolhido (esperando a página carregar, se preciso). */
@@ -179,7 +183,7 @@ function applyTrayMenu() {
 function applyTray(enabled) {
   if (enabled && !tray) {
     tray = new Tray(nativeImage.createFromPath(path.join(__dirname, 'assets', 'tray.png')));
-    tray.setToolTip('UniHub');
+    tray.setToolTip('UnusHub');
     applyTrayMenu();
     tray.on('click', showWindow);
   } else if (!enabled && tray) {
@@ -239,7 +243,7 @@ function createWindow({ hidden = false } = {}) {
     ...initialWindowSize(),
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: 600,
-    title: 'UniHub',
+    title: 'UnusHub',
     backgroundColor: themeColors().bg,
     // Sem a barra de título do Windows: os botões minimizar/maximizar/fechar
     // ficam sobre o cabeçalho do app, à direita (mesma cor e altura dele).
@@ -281,7 +285,7 @@ ipcMain.on('tray-batteries', (_event, items) => {
     .slice(0, 20)
     .map((t) => ({ id: t.id.slice(0, 120), label: t.label.slice(0, 80) }));
   applyTrayMenu();
-  tray?.setToolTip(['UniHub', ...trayBatteries.map((t) => t.label)].join('\n').slice(0, 127));
+  tray?.setToolTip(['UnusHub', ...trayBatteries.map((t) => t.label)].join('\n').slice(0, 127));
 });
 
 ipcMain.handle('open-sound-settings', () => shell.openExternal('ms-settings:sound'));
@@ -289,27 +293,77 @@ ipcMain.handle('open-sound-settings', () => shell.openExternal('ms-settings:soun
 // --- Sons (aba Sons) ------------------------------------------------------------
 // Os áudios que a pessoa adiciona são copiados para a pasta dos sons, então
 // continuam tocando mesmo se o arquivo original mudar de lugar. A pasta padrão é
-// MúsicasUniHub (fácil de achar e fora de pastas de projeto); antes era dentro
-// dos dados do app, e os sons de lá são movidos uma vez ao abrir. Pode ser outra
+// Músicas\UnusHub (fácil de achar e fora de pastas de projeto); antes era dentro
+// dos dados do app, e os sons de lá são movidos uma vez ao abrir. Com o nome
+// antigo (Músicas\UniHub), a pasta é renomeada uma vez ao abrir. Pode ser outra
 // pasta que a pessoa escolher; fica em settings.soundsFolder,
 // que a página não muda por settings:set, só pela janela de escolher pasta.
 // A página recebe o nome e os bytes de cada som e o caminho da pasta, só para mostrar.
 
 const SOUND_EXTENSIONS = ['mp3', 'wav', 'ogg', 'oga', 'opus', 'm4a', 'aac', 'flac', 'webm'];
 const SOUND_MAX_BYTES = 50 * 1024 * 1024;
-const defaultSoundsDir = () => path.join(app.getPath('music'), 'UniHub');
+const defaultSoundsDir = () => path.join(app.getPath('music'), 'UnusHub');
 const legacySoundsDir = () => path.join(app.getPath('userData'), 'sons');
 const soundsDir = () => settings.soundsFolder || defaultSoundsDir();
+
+// O app se chamava UniHub: a pasta padrão Músicas\UniHub vira Músicas\UnusHub.
+// Se não der para renomear (arquivo aberto), continua usando a antiga, escolhida.
+function migrateSoundsFolderName() {
+  if (settings.soundsFolder) return;
+  const oldDir = path.join(app.getPath('music'), 'UniHub');
+  const newDir = defaultSoundsDir();
+  try {
+    if (!fs.existsSync(oldDir)) return;
+    if (fs.existsSync(newDir)) {
+      if (fs.readdirSync(newDir).length) return; // as duas com arquivos: não mistura
+      fs.rmdirSync(newDir);
+    }
+    fs.renameSync(oldDir, newDir);
+  } catch {
+    settings = { ...settings, soundsFolder: oldDir };
+    saveSettings();
+  }
+}
 
 function listSounds() {
   try {
     return fs.readdirSync(soundsDir(), { withFileTypes: true })
       .filter((e) => e.isFile() && SOUND_EXTENSIONS.includes(path.extname(e.name).slice(1).toLowerCase()))
       .map((e) => ({ id: e.name, name: path.parse(e.name).name }))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      .sort(soundOrderCompare());
   } catch {
     return [];
   }
+}
+
+// Ordem dos sons escolhida pela pessoa (arrastando os cartões): settings.soundOrder
+// com os ids. Os que não estão na lista (novos) vêm depois, em ordem alfabética.
+function soundOrderCompare() {
+  const order = Array.isArray(settings.soundOrder) ? settings.soundOrder : [];
+  const pos = new Map(order.map((id, i) => [id, i]));
+  return (a, b) => {
+    const pa = pos.has(a.id) ? pos.get(a.id) : Infinity;
+    const pb = pos.has(b.id) ? pos.get(b.id) : Infinity;
+    if (pa !== pb) return pa - pb;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  };
+}
+
+/** Copia arquivos de áudio para a pasta dos sons; devolve os nomes que ficaram de fora. */
+function copySoundFiles(files) {
+  const skipped = [];
+  fs.mkdirSync(soundsDir(), { recursive: true });
+  for (const file of files) {
+    const ext = path.extname(file).toLowerCase();
+    let size = Infinity;
+    try { if (fs.statSync(file).isFile()) size = fs.statSync(file).size; } catch { /* sumiu */ }
+    if (!SOUND_EXTENSIONS.includes(ext.slice(1)) || size > SOUND_MAX_BYTES) {
+      skipped.push(path.basename(file));
+      continue;
+    }
+    fs.copyFileSync(file, path.join(soundsDir(), freeName(path.parse(file).name, ext)));
+  }
+  return skipped;
 }
 
 /** Caminho de um som da pasta, só pelo nome do arquivo (nada de ../). */
@@ -336,8 +390,8 @@ const FOLDER_TEXT = {
 };
 
 /**
- * Pasta para a página. `music`: o caminho dentro de Músicas (ex.: "UniHub"),
- * para mostrar curto ("Músicas › UniHub"); null se a pasta for fora de Músicas.
+ * Pasta para a página. `music`: o caminho dentro de Músicas (ex.: "UnusHub"),
+ * para mostrar curto ("Músicas › UnusHub"); null se a pasta for fora de Músicas.
  */
 function soundsFolderInfo() {
   const dir = soundsDir();
@@ -457,20 +511,24 @@ ipcMain.handle('sounds:add', async () => {
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Áudio', extensions: SOUND_EXTENSIONS }],
   });
-  const skipped = [];
-  if (!result.canceled) {
-    fs.mkdirSync(soundsDir(), { recursive: true });
-    for (const file of result.filePaths) {
-      const ext = path.extname(file).toLowerCase();
-      const size = fs.statSync(file).size;
-      if (!SOUND_EXTENSIONS.includes(ext.slice(1)) || size > SOUND_MAX_BYTES) {
-        skipped.push(path.basename(file));
-        continue;
-      }
-      fs.copyFileSync(file, path.join(soundsDir(), freeName(path.parse(file).name, ext)));
-    }
-  }
+  const skipped = result.canceled ? [] : copySoundFiles(result.filePaths);
   return { sounds: listSounds(), skipped };
+});
+
+// Arquivos soltos na aba (arrastar e soltar): mesmos limites da janela de escolher.
+ipcMain.handle('sounds:add-files', (_event, files) => {
+  if (!Array.isArray(files)) return { sounds: listSounds(), skipped: [] };
+  const valid = files.filter((f) => typeof f === 'string' && path.isAbsolute(f)).slice(0, 100);
+  const skipped = copySoundFiles(valid); // copia antes de listar
+  return { sounds: listSounds(), skipped };
+});
+
+// Nova ordem dos sons (ids na ordem dos cartões).
+ipcMain.handle('sounds:set-order', (_event, ids) => {
+  if (!Array.isArray(ids)) return listSounds();
+  settings = { ...settings, soundOrder: ids.filter((id) => typeof id === 'string' && id === path.basename(id)).slice(0, 2000) };
+  saveSettings();
+  return listSounds();
 });
 
 ipcMain.handle('sounds:read', (_event, id) => {
@@ -503,6 +561,16 @@ const AUDIO_MIX_DIR = app.isPackaged
   ? path.join(process.resourcesPath, 'native', 'audio-mix')
   : path.join(__dirname, '..', '..', 'native', 'audio-mix');
 const AUDIO_MIX_DLL = path.join(AUDIO_MIX_DIR, 'build', 'UniHubAudioMix.dll');
+// Onde o instalar.ps1 põe a DLL. O versao.txt (um número) diz a versão do efeito:
+// o que veio no app e o que está instalado; sem o arquivo, é a versão 1.
+const AUDIO_MIX_INSTALLED_DIR = 'C:\\Program Files\\UniHub\\audio-mix';
+function effectVersion(dir) {
+  try {
+    return parseInt(fs.readFileSync(path.join(dir, 'versao.txt'), 'utf8'), 10) || 1;
+  } catch {
+    return 1;
+  }
+}
 const AUDIO_MIX_BRIDGE = path.join(AUDIO_MIX_DIR, 'build', 'ponte.exe');
 const AUDIO_MIX_CLSID = '{6B1F3C2A-8E4D-4F7B-9A15-3C2D7E9F0A41}';
 const MIC_ID = /^\{[0-9a-fA-F-]{36}\}$/;
@@ -519,7 +587,9 @@ const MIC_EFFECT_SCRIPT = [
   "  $e = if ($fx) { @($fx.GetValue('{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15')) } else { @() }",
   "  [pscustomobject]@{ id = $_.PSChildName; name = $p.'{a45c254e-df1c-4efd-8020-67d146a850e0},2';",
   "    device = $p.'{b3f8fa53-0004-438e-9003-51a46e139bfc},6'; installed = ($l -like '*" + AUDIO_MIX_CLSID + "*') -or ($e -contains '" + AUDIO_MIX_CLSID + "');",
-  "    calls = ($e -contains '" + AUDIO_MIX_CLSID + "') }",
+  "    calls = ($e -contains '" + AUDIO_MIX_CLSID + "');",
+  // Quem criou o aparelho (BTHHFENUM, USB…): no Bluetooth o Windows não roda efeitos.
+  "    bus = $p.'{a45c254e-df1c-4efd-8020-67d146a850e0},24' }",
   '}',
   'ConvertTo-Json @($r) -Compress',
 ].join('\n');
@@ -539,20 +609,71 @@ function runBridge(args, input = null) {
   });
 }
 
+// Aparelhos de som do Windows: saídas e microfones, padrão, volume e mudo
+// (saidas.exe, ver native/audio-mix/saidas). Só muda algo quando a pessoa escolhe
+// na aba Headsets.
+const OUTPUTS_TOOL = path.join(AUDIO_MIX_DIR, 'build', 'saidas.exe');
+const DEVICE_ID = /^\{0\.0\.[01]\.[0-9a-f]{8}\}\.\{[0-9a-f-]{36}\}$/i; // 0 = saída, 1 = microfone
+
+function runOutputsTool(args) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32' || !fs.existsSync(OUTPUTS_TOOL)) return resolve(null);
+    execFile(OUTPUTS_TOOL, args, { windowsHide: true, encoding: 'utf8', timeout: 10_000 }, (_err, stdout) => {
+      try { resolve(JSON.parse(stdout.trim())); } catch { resolve(null); }
+    });
+  });
+}
+
+const cleanDevices = (list) => (Array.isArray(list) ? list : [])
+  .filter((d) => d && DEVICE_ID.test(d.id))
+  .map((d) => ({
+    id: d.id, name: String(d.name || ''), default: !!d.default, comm: !!d.comm,
+    volume: Number.isInteger(d.volume) && d.volume >= 0 ? d.volume : null, mute: !!d.mute,
+  }));
+
+// { outputs: [{ id, name, default, comm, volume, mute }], inputs: [...] } ou null.
+ipcMain.handle('audio:devices', async () => {
+  const result = await runOutputsTool(['--listar']);
+  return result ? { outputs: cleanDevices(result.saidas), inputs: cleanDevices(result.microfones) } : null;
+});
+
+const toolResult = (result) => (result?.ok ? { ok: true } : { ok: false, error: result?.erro || 'sem resposta' });
+
+// roles: 'todos' (padrão e chamadas), 'normal' ou 'chamadas'.
+ipcMain.handle('audio:set-default', async (_event, id, roles = 'todos') => {
+  if (typeof id !== 'string' || !DEVICE_ID.test(id) || !['todos', 'normal', 'chamadas'].includes(roles)) return { ok: false, error: 'pedido inválido' };
+  return toolResult(await runOutputsTool(['--padrao', id, roles]));
+});
+
+ipcMain.handle('audio:set-volume', async (_event, id, volume) => {
+  if (typeof id !== 'string' || !DEVICE_ID.test(id) || !Number.isFinite(volume)) return { ok: false, error: 'pedido inválido' };
+  return toolResult(await runOutputsTool(['--volume', id, String(Math.round(Math.min(100, Math.max(0, volume))))]));
+});
+
+ipcMain.handle('audio:set-mute', async (_event, id, mute) => {
+  if (typeof id !== 'string' || !DEVICE_ID.test(id)) return { ok: false, error: 'pedido inválido' };
+  return toolResult(await runOutputsTool(['--mudo', id, mute ? '1' : '0']));
+});
+
 ipcMain.handle('mic-effect:status', () => new Promise((resolve) => {
   const built = fs.existsSync(AUDIO_MIX_DLL) && fs.existsSync(AUDIO_MIX_BRIDGE);
   if (process.platform !== 'win32') return resolve({ built: false, mics: [], active: false });
   execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', MIC_EFFECT_SCRIPT],
-    { timeout: 15_000, windowsHide: true }, async (err, stdout) => {
+    // 30 s: no notebook, o PowerShell abrindo junto com o app pode passar de 15 s.
+    { timeout: 30_000, windowsHide: true }, async (err, stdout) => {
       let mics = [];
+      let failed = !!err;
       try {
         const list = JSON.parse(stdout.trim() || '[]');
         mics = (Array.isArray(list) ? list : [list])
           .filter((m) => m && MIC_ID.test(m.id))
-          .map((m) => ({ id: m.id, name: String(m.name || ''), device: String(m.device || ''), installed: !!m.installed, calls: !!m.calls }));
-      } catch { /* sem lista */ }
+          .map((m) => ({ id: m.id, name: String(m.name || ''), device: String(m.device || ''), installed: !!m.installed, calls: !!m.calls, bluetooth: /^BTH/i.test(String(m.bus || '')) }));
+      } catch { failed = true; }
       const active = built ? (await runBridge(['--estado'])).code === 0 : false;
-      resolve({ built, mics, active });
+      // failed: a lista não pôde ser lida (diferente de "nenhum microfone").
+      // outdated: o efeito instalado é de uma versão mais antiga que a deste app.
+      const outdated = mics.some((m) => m.installed) && effectVersion(AUDIO_MIX_DIR) > effectVersion(AUDIO_MIX_INSTALLED_DIR);
+      resolve({ built, mics, active, outdated, failed: failed && mics.length === 0 });
     });
 }));
 
@@ -612,26 +733,46 @@ ipcMain.handle('mic-effect:stop', () => {
   runBridge.current = null;
 });
 
-// --- Atualizações (versões 0.x portáteis) ------------------------------------------
-// Ver updates.cjs. O exe portátil do electron-builder informa o próprio caminho em
-// PORTABLE_EXECUTABLE_FILE; sem ele (rodando pelo código), só abre a página da release.
+// --- Atualizações ---------------------------------------------------------------
+// Ver updates.cjs. Três jeitos de rodar:
+// - instalado (instalador NSIS): electron-updater baixa o instalador novo das
+//   releases do GitHub (confere o SHA-512 do latest.yml) e instala ao reiniciar;
+// - exe portátil: informa o próprio caminho em PORTABLE_EXECUTABLE_FILE, e o app
+//   baixa o exe novo e troca um pelo outro;
+// - pelo código (desenvolvimento): só abre a página da release.
 
 const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || '';
-let downloadedUpdate = null; // { version, file }
+const installedApp = () => app.isPackaged && !portableExe();
+let downloadedUpdate = null; // { version, file } (portátil) ou { version, installer: true }
+
+let autoUpdater = null;
+function getAutoUpdater() {
+  if (!autoUpdater) {
+    ({ autoUpdater } = require('electron-updater'));
+    autoUpdater.autoDownload = false; // só baixa quando a pessoa clica em "Atualizar"
+    autoUpdater.autoInstallOnAppQuit = true; // baixada e o app fechou: instala em silêncio
+    autoUpdater.allowPrerelease = true; // as versões 0.x saem como pre-release
+    autoUpdater.logger = null;
+  }
+  return autoUpdater;
+}
 
 ipcMain.handle('update:check', async () => {
   const current = app.getVersion();
   try {
     const res = await fetch(`https://api.github.com/repos/${updates.REPO}/releases?per_page=20`, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UniHub-updater' },
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UnusHub-updater' },
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return { current, error: `GitHub respondeu ${res.status}` };
     const latest = updates.pickLatest(await res.json());
     const newer = !!latest && updates.compareVersions(latest.version, current) > 0;
+    const installed = installedApp();
     return {
       current, latest, newer,
-      canInstall: newer && !!latest.asset && !!portableExe(),
+      canInstall: newer && (installed ? !!latest.installer : !!latest.asset && !!portableExe()),
+      // Tamanho do que vai ser baixado (para o botão "Atualizar (… MB)").
+      size: (installed ? latest?.installer?.size : latest?.asset?.size) || 0,
       downloaded: downloadedUpdate?.version === latest?.version,
     };
   } catch (err) {
@@ -640,11 +781,35 @@ ipcMain.handle('update:check', async () => {
 });
 
 // Baixa o exe novo para a pasta do exe atual, conferindo tamanho e SHA-256.
+// Versão instalada: o electron-updater baixa o instalador novo e confere o SHA-512.
+async function downloadInstalledUpdate(event) {
+  const updater = getAutoUpdater();
+  try {
+    const check = await updater.checkForUpdates();
+    const version = check?.updateInfo?.version;
+    if (!version || updates.compareVersions(version, app.getVersion()) <= 0) {
+      return { ok: false, message: 'Nenhuma versão nova para baixar.' };
+    }
+    const onProgress = (p) => event.sender.send('update:progress', { received: p.transferred, total: p.total });
+    updater.on('download-progress', onProgress);
+    try {
+      await updater.downloadUpdate();
+    } finally {
+      updater.off('download-progress', onProgress);
+    }
+    downloadedUpdate = { version, installer: true };
+    return { ok: true, version, verified: true };
+  } catch (err) {
+    return { ok: false, message: `Não foi possível baixar: ${String(err?.message || err).split('\n')[0]}.` };
+  }
+}
+
 ipcMain.handle('update:download', async (event) => {
+  if (installedApp()) return downloadInstalledUpdate(event);
   const exe = portableExe();
-  if (!exe) return { ok: false, message: 'Só a versão portátil se atualiza sozinha.' };
+  if (!exe) return { ok: false, message: 'Rodando pelo código: baixe a versão nova na página.' };
   const res = await fetch(`https://api.github.com/repos/${updates.REPO}/releases?per_page=20`, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UniHub-updater' },
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UnusHub-updater' },
   }).catch(() => null);
   const latest = res?.ok ? updates.pickLatest(await res.json()) : null;
   if (!latest?.asset || updates.compareVersions(latest.version, app.getVersion()) <= 0) {
@@ -656,7 +821,7 @@ ipcMain.handle('update:download', async (event) => {
   }
   const part = `${target}.download`;
   try {
-    const file = await fetch(latest.asset.url, { headers: { 'User-Agent': 'UniHub-updater' } });
+    const file = await fetch(latest.asset.url, { headers: { 'User-Agent': 'UnusHub-updater' } });
     if (!file.ok || !file.body) throw new Error(`download respondeu ${file.status}`);
     const total = Number(file.headers.get('content-length')) || latest.asset.size || 0;
     const hash = crypto.createHash('sha256');
@@ -687,6 +852,13 @@ ipcMain.handle('update:download', async (event) => {
 
 // Fecha o app; um script espera ele sair, apaga o exe antigo e abre o novo.
 ipcMain.handle('update:install', () => {
+  // Instalado: fecha e roda o instalador novo em silêncio, que abre o app no fim.
+  if (installedApp()) {
+    if (!downloadedUpdate?.installer) return { ok: false };
+    quitting = true;
+    getAutoUpdater().quitAndInstall(true, true);
+    return { ok: true };
+  }
   const exe = portableExe();
   if (!exe || !downloadedUpdate || !fs.existsSync(downloadedUpdate.file)) return { ok: false };
   const script = path.join(app.getPath('temp'), `unihub-atualizar-${Date.now()}.cmd`);
@@ -704,7 +876,7 @@ ipcMain.handle('update:open-page', (_event, url) => {
 
 // --- Atalhos dos sons ----------------------------------------------------------
 // Cada som pode ter um atalho global (ex.: "Ctrl+Shift+1", "F9", "num5"), que
-// funciona com o UniHub em segundo plano, inclusive dentro de jogos. Ficam em
+// funciona com o UnusHub em segundo plano, inclusive dentro de jogos. Ficam em
 // settings.soundHotkeys ({ id do som: atalho }). Quando o atalho é apertado, a
 // página recebe 'sounds:hotkey' com o id e toca o som.
 
@@ -899,6 +1071,7 @@ app.whenReady().then(() => {
   settings.autoStart = app.getLoginItemSettings(loginItem()).openAtLogin;
   if (!settings.autoStart) settings.tray = false;
   setupHidPermissions();
+  migrateSoundsFolderName();
   migrateLegacySounds(); // antes da janela: a aba já lê a pasta nova
   // Aberto pelo Windows ao ligar o PC, com a bandeja ligada: começa só na bandeja.
   createWindow({ hidden: process.argv.includes(STARTED_HIDDEN) && settings.tray });

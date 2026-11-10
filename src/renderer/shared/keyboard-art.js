@@ -1,4 +1,4 @@
-// Desenho de teclado (próprio do UniHub), usado na lista da aba, no menu e na
+// Desenho de teclado (próprio do UnusHub), usado na lista da aba, no menu e na
 // tela "Conecte seu teclado". Usa as classes do desenho do controle
 // (pad-body/pad-part), que já têm as cores de cada lugar do app.
 

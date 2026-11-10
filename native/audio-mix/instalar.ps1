@@ -46,11 +46,19 @@ catch {
   Copy-Item $Dll $destino -Force
 }
 
+# Versão do efeito instalado (versao.txt, um número que sobe quando a DLL muda):
+# o app compara com a que veio nele e oferece "Atualizar efeito". Sem o arquivo
+# (instalações antigas), vale como versão 1.
+$versao = Join-Path $PSScriptRoot 'versao.txt'
+if (Test-Path $versao) { Copy-Item $versao (Join-Path $pasta 'versao.txt') -Force }
+
 # Registro de diagnóstico, com escrita liberada para o Serviço Local (S-1-5-19),
-# que é quem roda a DLL dentro do serviço de áudio.
+# que é quem roda a DLL dentro do serviço de áudio. Fica desligado: só registra se
+# existir o arquivo log-ligado nesta pasta. O registro antigo é apagado.
 $diag = 'C:\ProgramData\UniHub'
 New-Item -ItemType Directory -Force $diag | Out-Null
 icacls $diag /grant '*S-1-5-19:(OI)(CI)M' | Out-Null
+Remove-Item (Join-Path $diag 'audio-mix.log') -Force -ErrorAction SilentlyContinue
 
 # 2. Registro COM e de efeito de áudio
 $com = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"

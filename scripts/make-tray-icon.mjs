@@ -1,5 +1,5 @@
-// Gera o ícone do UniHub: um "U" branco sobre um quadrado azul arredondado.
-// Desenho próprio do UniHub, sem imagens de terceiros. O desenho é feito numa
+// Gera o ícone do UnusHub: um "U" branco sobre um quadrado azul arredondado.
+// Desenho próprio do UnusHub, sem imagens de terceiros. O desenho é feito numa
 // grade de 32 e ampliado para o tamanho pedido.
 // Uso: node scripts/make-tray-icon.mjs                       (bandeja, 32 px)
 //      node scripts/make-tray-icon.mjs 256 build/icon.png     (ícone do .exe)

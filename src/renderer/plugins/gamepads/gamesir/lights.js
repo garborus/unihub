@@ -56,7 +56,7 @@ export function parseLightBlock(bytes) {
     audioReactive: (bytes[x] & 1) === 1,
     holdToWake: (bytes[x + 5] & 1) === 1,
     standbyMinutes: bytes[x + 6],
-    // Campos que o UniHub não edita, guardados como vieram.
+    // Campos que o UnusHub não edita, guardados como vieram.
     preserved: {
       audioByte: bytes[x],
       userEffectIndex: bytes[x + 1],
@@ -106,7 +106,7 @@ export function changedRange(before, after) {
 }
 
 // --- Predefinições -----------------------------------------------------------
-// Criadas para o UniHub. Cada uma recebe o layout de luzes do modelo e devolve
+// Criadas para o UnusHub. Cada uma recebe o layout de luzes do modelo e devolve
 // velocidade + quadros com as cores de cada luz (na ordem do layout).
 
 export const PRESETS = [

@@ -1,10 +1,10 @@
-// Aviso de versão nova (0.x portátil) e o grupo "Atualizações" das Configurações.
+// Aviso de versão nova e o grupo "Atualizações" das Configurações.
 //
 // Ao abrir, o app consulta as releases do GitHub uma vez; com versão nova, mostra
-// um aviso no canto. "Atualizar" baixa o exe novo e "Reiniciar e atualizar" fecha
-// o app e abre a versão nova. Quem não está no exe portátil (ex.: rodando pelo
-// código) só ganha o link para a página da versão. Lado do processo principal:
-// src/main/updates.cjs. Na 1.0 isto dá lugar ao electron-updater.
+// um aviso no canto. "Atualizar" baixa a versão nova (instalado: o instalador, pelo
+// electron-updater; portátil: o exe) e "Reiniciar e atualizar" fecha o app e abre a
+// versão nova. Rodando pelo código, só o link para a página da versão. Lado do
+// processo principal: main.cjs (update:*) e src/main/updates.cjs.
 
 import { h, clear, button } from '../core/dom.js';
 
@@ -52,7 +52,7 @@ function actions() {
     return button('Reiniciar e atualizar', () => window.unihub.installUpdate(), { kind: 'primary' });
   }
   return info.canInstall
-    ? button(`Atualizar (${mb(info.latest.asset.size)} MB)`, download, { kind: 'primary' })
+    ? button(info.size ? `Atualizar (${mb(info.size)} MB)` : 'Atualizar', download, { kind: 'primary' })
     : button('Baixar na página da versão', openPage, { kind: 'primary' });
 }
 
@@ -68,7 +68,7 @@ export function mountUpdateBanner(parent) {
     if (!show) return;
     clear(banner,
       h('div', { class: 'update-banner-text' },
-        h('strong', {}, `UniHub ${info.latest.version} disponível`),
+        h('strong', {}, `UnusHub ${info.latest.version} disponível`),
         h('span', { class: 'muted small' }, state.phase === 'downloaded'
           ? 'Baixada. Reinicie para usar a versão nova.'
           : `Você está na ${info.current}.`),

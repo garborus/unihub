@@ -370,7 +370,7 @@ export default {
       const tabs = subTabs([
         { id: 'device', label: 'Dispositivo', render: () => infoCard({
           rows: [['Fabricante', label.connection || 'Desconhecido'], ['Nome no sistema', label.systemName || '—'], ['VID:PID', vidPidRow(info.vidPid)]],
-          note: 'Opções avançadas desta marca ainda não estão disponíveis no UniHub.',
+          note: 'Opções avançadas desta marca ainda não estão disponíveis no UnusHub.',
           label,
         }) },
         { id: 'test', label: 'Teste de botões', render: () => testerFor(deviceId(entry.device), 'generic', entry.device) },

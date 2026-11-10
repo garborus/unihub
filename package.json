@@ -1,8 +1,8 @@
 {
   "name": "unihub",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Um só app para configurar periféricos de vários fabricantes: controles, headsets e teclados, de qualquer marca.",
-  "author": "Gabriel Freitas",
+  "author": "unushub-team",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,7 +13,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/*.test.js\"",
-    "dist": "electron-builder --win portable --publish never"
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:portatil": "electron-builder --win portable --publish never"
   },
   "devDependencies": {
     "electron": "44.7.2",
@@ -21,7 +22,7 @@
   },
   "build": {
     "appId": "io.github.garborus.unihub",
-    "productName": "UniHub",
+    "productName": "UnusHub",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -37,18 +38,46 @@
         "filter": [
           "build/*.dll",
           "build/*.exe",
-          "*.ps1"
+          "*.ps1",
+          "versao.txt"
         ]
       }
     ],
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "icon": "build/icon.png"
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UnusHub",
+      "uninstallDisplayName": "UnusHub",
+      "artifactName": "UnusHub-Setup-${version}.exe",
+      "include": "build/installer.nsh",
+      "installerLanguages": [
+        "pt_BR",
+        "en_US",
+        "es_ES"
+      ],
+      "displayLanguageSelector": false
+    },
     "portable": {
-      "artifactName": "UniHub-${version}-portable.exe"
+      "artifactName": "UnusHub-${version}-portable.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "garborus",
+      "repo": "unihub",
+      "releaseType": "prerelease"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.6.2"
   }
 }

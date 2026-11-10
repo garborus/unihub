@@ -5,14 +5,14 @@
 // - cabo de áudio virtual: toca na saída do cabo; a entrada dele vira o
 //   microfone no app de chamada. Com "Misturar minha voz", o microfone real
 //   também vai para o cabo.
-// - efeito no microfone (beta): o efeito de áudio do UniHub (native/audio-mix)
+// - efeito no microfone (beta): o efeito de áudio do UnusHub (native/audio-mix)
 //   soma o som ao microfone de verdade; o app manda o som pela ponte.
 
 import { h, clear, card, button } from '../../core/dom.js';
 // Estilos da aba em styles.css, na seção "Aba Sons" (classes sons-*).
-import { realDevices, pickMicOutput, isVirtualOutput } from './devices.js';
+import { realDevices, physicalDevices, pickMicOutput, isVirtualOutput, isVirtualDevice } from './devices.js';
 import { EFFECT_RATE, mixToMono, channelsOf } from './mix.js';
-import { acceleratorFromEvent, acceleratorLabel, isTypingKey, hotkeyKeyCount, MAX_HOTKEY_KEYS } from './hotkeys.js';
+import { acceleratorFromEvent, acceleratorLabel, isTypingKey, hotkeyKeyCount, MAX_HOTKEY_KEYS, STOP_HOTKEY_ID } from './hotkeys.js';
 
 const STORAGE_KEY = 'unihub.sounds';
 const MODES = {
@@ -22,7 +22,7 @@ const MODES = {
 };
 
 // micMode: como o som chega à chamada. 'effect' (padrão) = efeito de áudio do
-// UniHub no microfone (native/audio-mix); 'cable' = cabo de áudio virtual, para
+// UnusHub no microfone (native/audio-mix); 'cable' = cabo de áudio virtual, para
 // quem não pode instalar o efeito ou usa um app que pega o microfone direto.
 // volumeEar / volumeMic: volume dos sons no fone e no microfone (0 a 100).
 const DEFAULT_PREFS = { listen: '', micOut: '', micIn: '', mixVoice: false, volumeEar: 80, volumeMic: 80, micMode: 'effect', effectMic: '' };
@@ -67,6 +67,7 @@ function icon(...paths) {
 const icons = {
   play: icon('M8 5.5v13l10.5-6.5z'),
   stop: icon('M7 7h10v10H7z'),
+  stopAll: icon('M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M9.5 9.5h5v5h-5z'),
   plus: icon('M12 5v14M5 12h14'),
   external: icon('M14 4h6v6M20 4l-8.5 8.5', 'M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5'),
   folder: icon('M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'),
@@ -106,6 +107,16 @@ async function openSink(sinkId) {
 let activeTab = null;
 let backgroundTab = null;
 
+// Ao adicionar a aba, o efeito no microfone já é instalado (sem ele os sons não
+// chegam a ninguém): a aba, assim que lê os microfones, pede a instalação.
+let autoInstallEffect = false;
+
+// Atalho que para todos os sons (gravado e guardado como os atalhos dos sons).
+const STOP_ENTRY = { id: STOP_HOTKEY_ID, name: 'Parar todos os sons' };
+
+// Duração de um som em m:ss (ex.: 0:01, 3:18).
+const durationText = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
 window.unihub?.onSoundHotkey?.((id) => {
   if (!activeTab && !backgroundTab) backgroundTab = plugin.mount(document.createElement('div'));
   (activeTab || backgroundTab).playById(id);
@@ -117,6 +128,12 @@ const plugin = {
   tagline: 'Guarde áudios e toque no fone ou no microfone, para quem está na chamada ouvir',
   status: 'beta',
   kind: 'feature', // recurso do app: não depende de um aparelho conectado
+
+  /** Chamado quando a pessoa adiciona a aba: instala o efeito no microfone. */
+  onInstall() {
+    autoInstallEffect = true;
+    activeTab?.tryAutoInstall?.();
+  },
   icon: () => icons.note(), // ícone na barra lateral
 
   matches() {
@@ -134,6 +151,7 @@ const plugin = {
     let sounds = [];
     let devices = [];
     let message = '';
+    let query = ''; // busca por nome na lista de sons
     let folder = null; // { path, custom }
     let hotkeys = {}; // id do som -> atalho
     let recording = null; // id do som esperando as teclas do atalho
@@ -147,18 +165,33 @@ const plugin = {
     const sinks = { ear: null, mic: null }; // { id, ctx, gain }
     let playing = []; // AudioBufferSourceNode
     let voice = null; // { stream, node }
-    let effect = { built: false, mics: [], active: false, busy: '' };
+    // loaded: a primeira leitura dos microfones já voltou; failed: não deu para ler.
+    let effect = { built: false, loaded: false, failed: false, mics: [], active: false, busy: '' };
     let effectPlaying = false;
     const useEffect = () => prefs.micMode === 'effect';
     const effectMic = () => effect.mics.find((m) => m.installed) || null;
+    // Microfone escolhido para instalar: o salvo, se ainda estiver ligado; senão o
+    // primeiro que não é Bluetooth (no Bluetooth o Windows não roda efeitos).
+    // Microfones que dá para escolher: sem os virtuais (ex.: Steam Streaming Microphone).
+    const micChoices = () => effect.mics.filter((m) => !isVirtualDevice(m.device) && !isVirtualDevice(m.name));
+    const chosenMic = () => micChoices().find((m) => m.id === prefs.effectMic)
+      || micChoices().find((m) => !m.bluetooth) || micChoices()[0] || null;
 
     function setMessage(text) {
       message = text;
       render();
     }
 
+    // Saída escolhida para ouvir, se ainda estiver ligada. Um aparelho que saiu (ex.:
+    // fone Bluetooth desligado) abriria uma saída muda que nunca termina de tocar:
+    // nesse caso usa a saída padrão do Windows, que é o que a lista mostra.
+    function listenId() {
+      if (!prefs.listen) return '';
+      return physicalDevices(devices, 'audiooutput').some((d) => d.deviceId === prefs.listen) ? prefs.listen : '';
+    }
+
     async function sink(kind) {
-      const id = kind === 'ear' ? prefs.listen : (pickMicOutput(devices, prefs.micOut)?.deviceId || '');
+      const id = kind === 'ear' ? listenId() : (pickMicOutput(devices, prefs.micOut)?.deviceId || '');
       if (kind === 'mic' && !id) throw new Error('escolha a saída do microfone virtual');
       if (sinks[kind]?.id === id) return sinks[kind];
       await closeSink(kind);
@@ -198,10 +231,20 @@ const plugin = {
 
     // O estado muda quando um app (jogo, Discord, gravador) começa ou para de usar o
     // microfone. Enquanto a aba está à vista e o efeito instalado, confere a cada 3 s.
-    const EFFECT_POLL_MS = 3000;
+    // Sem microfone na lista (ou leitura que falhou), lê a lista de novo a cada 10 s.
+    const EFFECT_POLL_MS = 2000;
+    const MICS_RETRY_MS = 10_000;
+    let lastMicsRetry = 0;
     const effectPoll = setInterval(async () => {
-      if (isBackground || !useEffect() || !effectMic() || effect.busy || !api.micEffectActive) return;
+      if (isBackground || !useEffect() || effect.busy || !api.micEffectActive) return;
       if (document.hidden || !container.offsetParent) return;
+      if (!effectMic()) {
+        if (effect.loaded && !effect.checking && micChoices().length === 0 && Date.now() - lastMicsRetry > MICS_RETRY_MS) {
+          lastMicsRetry = Date.now();
+          refreshEffect().catch(() => {});
+        }
+        return;
+      }
       const active = await api.micEffectActive().catch(() => effect.active);
       if (active !== effect.active) {
         effect = { ...effect, active };
@@ -211,9 +254,32 @@ const plugin = {
 
     async function refreshEffect() {
       if (!api?.micEffectStatus) return;
-      const status = await api.micEffectStatus();
-      effect = { ...effect, ...status };
+      effect.checking = true;
+      if (effect.loaded) render();
+      const status = await api.micEffectStatus().catch(() => ({ failed: true }));
+      effect = { ...effect, ...status, loaded: true, checking: false };
       render();
+      tryAutoInstall();
+    }
+
+    // Aba recém-adicionada: instala o efeito no microfone escolhido (o Windows pede
+    // administrador). Só se o modo for o efeito, não houver efeito instalado e
+    // houver um microfone que aceite (não Bluetooth, não virtual).
+    function tryAutoInstall() {
+      if (!autoInstallEffect || isBackground || !effect.loaded || effect.busy) return;
+      autoInstallEffect = false;
+      if (!useEffect() || !effect.built || effectMic()) return;
+      const mic = chosenMic();
+      if (!mic || mic.bluetooth) return;
+      effectAction('install', mic.id);
+    }
+
+    // Microfone ligado ou desligado (ex.: fone Bluetooth conectou): lê a lista de novo.
+    let effectRefreshTimer = 0;
+    function scheduleEffectRefresh() {
+      if (!useEffect() || effect.busy) return;
+      clearTimeout(effectRefreshTimer);
+      effectRefreshTimer = setTimeout(() => refreshEffect().catch(() => {}), 1500);
     }
 
     async function effectAction(kind, micId = null) {
@@ -222,7 +288,7 @@ const plugin = {
         ? 'Instalando: confirme o pedido de administrador do Windows. O som de todos os apps para por alguns segundos.'
         : 'Removendo: confirme o pedido de administrador do Windows.';
       render();
-      const mic = micId || prefs.effectMic || effect.mics[0]?.id;
+      const mic = micId || chosenMic()?.id;
       const result = kind === 'install' ? await api.micEffectInstall(mic) : await api.micEffectRemove();
       effect.busy = '';
       message = result.cancelled ? 'Pedido de administrador recusado; nada mudou.'
@@ -275,6 +341,15 @@ const plugin = {
         playingId = sound.id;
         playStart = performance.now();
         playDuration = buffer.duration;
+        // Garantia: se a saída travar e o fim não chegar, para e reabre a saída na
+        // próxima vez, em vez de ficar "tocando" para sempre.
+        const started = playStart;
+        setTimeout(() => {
+          if (playingId !== sound.id || playStart !== started || !playing.length) return;
+          stopAll();
+          closeSink('ear');
+          closeSink('mic');
+        }, (buffer.duration + 1.5) * 1000);
       } catch (err) {
         message = `Não foi possível tocar ${sound.name}: ${err.message}.`;
       }
@@ -321,7 +396,15 @@ const plugin = {
       render();
     }
 
-    async function refreshDevices() {
+    async function refreshDevices(event) {
+      // Aparelho entrou ou saiu (ex.: fone Bluetooth trocou de modo): a saída aberta
+      // pode ter parado sem avisar e o som ficaria "tocando" para sempre. Fecha as
+      // saídas paradas; a próxima vez que tocar abre de novo no aparelho certo.
+      if (event) {
+        for (const kind of ['ear', 'mic']) {
+          if (sinks[kind] && !(playingId && playing.some((src) => src.context === sinks[kind].ctx))) closeSink(kind);
+        }
+      }
       let list = await navigator.mediaDevices.enumerateDevices();
       // Os nomes dos aparelhos só aparecem depois de liberar o microfone uma vez.
       if (list.some((d) => !d.label)) {
@@ -338,9 +421,10 @@ const plugin = {
     async function refreshHotkeys() {
       const result = await api.soundHotkeys();
       hotkeys = result.hotkeys;
-      const failed = result.failed?.filter((id) => sounds.some((s) => s.id === id)) || [];
+      const nameOf = (id) => (id === STOP_HOTKEY_ID ? STOP_ENTRY.name : sounds.find((s) => s.id === id)?.name);
+      const failed = result.failed?.filter((id) => nameOf(id)) || [];
       if (failed.length && !isBackground) {
-        message = `Outro app já usa o atalho de: ${failed.map((id) => sounds.find((s) => s.id === id).name).join(', ')}. Escolha outro.`;
+        message = `Outro app já usa o atalho de: ${failed.map(nameOf).join(', ')}. Escolha outro.`;
       }
       render();
     }
@@ -367,8 +451,10 @@ const plugin = {
       e.preventDefault();
       e.stopPropagation();
       const id = recording;
-      const sound = sounds.find((s) => s.id === id);
-      if (e.code === 'Escape') { stopRecording(); render(); return; }
+      const sound = id === STOP_HOTKEY_ID ? STOP_ENTRY : sounds.find((s) => s.id === id);
+      // Esc sozinho cancela; com Ctrl, Alt ou Shift vira atalho (ex.: Shift + Esc).
+      const withModifier = e.ctrlKey || e.altKey || e.shiftKey || e.metaKey;
+      if (e.code === 'Escape' && !withModifier) { stopRecording(); render(); return; }
       if (e.code === 'Backspace') {
         stopRecording();
         hotkeys = (await api.setSoundHotkey(id, null)).hotkeys;
@@ -390,12 +476,13 @@ const plugin = {
       const label = acceleratorLabel(accelerator);
       if (result.error === 'em uso') message = `O atalho ${label} já é usado por outro app. Escolha outro.`;
       else if (result.error) message = `Não foi possível usar o atalho ${label}.`;
-      else if (isTypingKey(accelerator)) message = `Atenção: enquanto o UniHub estiver aberto, a tecla ${label} toca ${sound?.name} em qualquer app e deixa de digitar. Para evitar isso, use com Ctrl, Alt ou Shift.`;
+      else if (isTypingKey(accelerator)) message = `Atenção: enquanto o UnusHub estiver aberto, a tecla ${label} ${id === STOP_HOTKEY_ID ? 'para os sons' : `toca ${sound?.name}`} em qualquer app e deixa de digitar. Para evitar isso, use com Ctrl, Alt ou Shift.`;
       else message = '';
       render();
     }
 
     async function playById(id) {
+      if (id === STOP_HOTKEY_ID) { stopAll(); return; }
       if (!sounds.some((s) => s.id === id)) await refreshSounds();
       const sound = sounds.find((s) => s.id === id);
       if (!sound) return;
@@ -437,6 +524,42 @@ const plugin = {
       if (result.skipped?.length) message = `Ficaram de fora (formato não aceito ou acima de 50 MB): ${result.skipped.join(', ')}.`;
       for (const id of buffers.keys()) if (!sounds.some((s) => s.id === id)) buffers.delete(id);
       render();
+      if (!isBackground) loadDurations().catch(() => {});
+    }
+
+    // Duração de cada som, para mostrar no cartão. Lê só o cabeçalho do áudio
+    // (elemento de áudio), sem decodificar o som inteiro; um por vez.
+    const durations = new Map(); // id -> segundos
+    let loadingDurations = false;
+    async function loadDurations() {
+      if (loadingDurations) return;
+      loadingDurations = true;
+      try {
+        for (const s of sounds) {
+          if (durations.has(s.id)) continue;
+          const cached = buffers.get(s.id);
+          let seconds = cached?.duration;
+          if (!seconds) {
+            const bytes = await api.readSound(s.id);
+            if (!bytes) continue;
+            const url = URL.createObjectURL(new Blob([bytes]));
+            seconds = await new Promise((resolve) => {
+              const a = new Audio();
+              a.preload = 'metadata';
+              a.onloadedmetadata = () => resolve(a.duration);
+              a.onerror = () => resolve(NaN);
+              a.src = url;
+            });
+            URL.revokeObjectURL(url);
+          }
+          if (Number.isFinite(seconds)) {
+            durations.set(s.id, seconds);
+            render();
+          }
+        }
+      } finally {
+        loadingDurations = false;
+      }
     }
 
     const select = (value, options, onchange) => h('select', { class: 'map-select', onchange: (e) => onchange(e.target.value) },
@@ -462,19 +585,37 @@ const plugin = {
     }
 
     function render() {
+      // Arrastando um cartão: não redesenha (sumiria com o cartão na mão); redesenha ao soltar.
+      if (reorder?.started) return;
       syncClock();
       if (!api?.listSounds) {
         clear(container, h('div', { class: 'empty' }, 'Esta aba precisa do app instalado.'));
         return;
       }
       const outputs = realDevices(devices, 'audiooutput');
-      const inputs = realDevices(devices, 'audioinput');
+      const inputs = physicalDevices(devices, 'audioinput'); // microfone de verdade, para misturar a voz
+      const listenOutputs = physicalDevices(devices, 'audiooutput'); // onde a pessoa ouve: sem cabos virtuais
       const micOut = pickMicOutput(devices, prefs.micOut);
       const virtualFound = outputs.some((d) => isVirtualOutput(d.label));
       const canMic = useEffect() ? !!effectMic() : !!micOut;
 
       clear(container, h('div', { class: 'sons-layout' },
-        h('section', { class: 'card sons-library' },
+        h('section', {
+          class: 'card sons-library',
+          // Arquivos de áudio soltos aqui viram sons (como "Adicionar sons").
+          ondragover: (e) => { if (isFileDrag(e)) { e.preventDefault(); e.currentTarget.classList.add('dropping'); } },
+          ondragleave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('dropping'); },
+          ondrop: (e) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            e.currentTarget.classList.remove('dropping');
+            // Um File por vez pela ponte (uma FileList inteira não atravessa).
+            const paths = [...e.dataTransfer.files].map((f) => api.pathForFile?.(f)).filter(Boolean);
+            if (paths.length && api.addSoundPaths) refreshSounds(api.addSoundPaths(paths));
+            else setMessage('Não foi possível ler os arquivos soltos. Use "Adicionar sons".');
+          },
+        },
+          h('div', { class: 'sons-drop-hint', 'aria-hidden': 'true' }, icons.plus(), 'Solte para adicionar os sons'),
           h('div', { class: 'sons-head' },
             h('div', {},
               h('h3', {}, 'Seus sons'),
@@ -482,29 +623,187 @@ const plugin = {
               // O que cada botão do cartão faz (os de baixo são só ícones).
               sounds.length
                 ? h('p', { class: 'muted small sons-howto' }, 'O ▶ toca no fone e no microfone ao mesmo tempo. Embaixo de cada som: tocar só no fone, só no microfone, definir um atalho de teclado e apagar.')
+                : null,
+              sounds.length
+                ? h('p', { class: 'muted small sons-howto' }, 'Arraste arquivos de áudio para cá para adicionar, ou arraste um som para mudar a ordem.')
                 : null),
             h('div', { class: 'sons-head-actions' },
+              sounds.length >= 2 ? searchBox() : null,
               playingId ? h('button', { class: 'btn sons-stop-top', hidden: true, onclick: stopAll }, 'Parar') : null)),
           message ? h('p', { class: 'sons-message small', role: 'status' }, message) : null,
+          h('p', { class: 'muted small sons-no-match', hidden: true }, 'Nenhum som com esse nome.'),
           sounds.length === 0
             ? h('div', { class: 'empty sons-empty' },
               h('span', { class: 'sons-empty-icon', 'aria-hidden': 'true' }, icons.note()),
               h('p', {}, 'Nenhum som ainda'),
-              h('p', { class: 'small' }, 'Adicione arquivos MP3, WAV, OGG, M4A ou FLAC.'),
+              h('p', { class: 'small' }, 'Adicione arquivos MP3, WAV, OGG, M4A ou FLAC, ou arraste os arquivos para cá.'),
               button('Adicionar sons', () => refreshSounds(api.addSounds()), { kind: 'primary' }))
             : h('div', { class: 'sons-grid' }, sounds.map((s) => soundTile(s, canMic)),
               h('button', { class: 'sons-tile sons-tile-add', onclick: () => refreshSounds(api.addSounds()) },
                 h('span', { class: 'sons-tile-add-icon', 'aria-hidden': 'true' }, icons.plus()), 'Adicionar sons')),
-          h('div', { class: 'sons-footer' }, volumeRow(), folderRow())),
+          h('div', { class: 'sons-footer' }, volumeRow(), stopHotkeyRow())),
         h('div', { class: 'sons-side' },
           card('Onde você escuta',
             h('p', { class: 'muted small' }, 'Os sons tocam aqui para você.'),
-            select(prefs.listen, [['', 'Saída padrão do Windows'], ...outputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('listen', v))),
+            select(listenId(), [['', 'Saída padrão do Windows'], ...listenOutputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('listen', v))),
           card('Para quem está na chamada',
             useEffect() ? effectSection() : cableSection(outputs, inputs, micOut, virtualFound),
-            modeSwitch())),
+            modeSwitch()),
+          folderRow()),
       ));
+      applyFilter();
       watchPlayingTile();
+    }
+
+    // --- Busca, ordem e arrastar arquivos ---------------------------------------
+
+    const isFileDrag = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    const normalize = (t) => t.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
+    // A busca só esconde cartões (sem redesenhar a aba, para o campo não perder o foco).
+    function searchBox() {
+      return h('input', {
+        type: 'search', class: 'sons-search', placeholder: 'Buscar', value: query, 'aria-label': 'Buscar sons',
+        oninput: (e) => { query = e.target.value; applyFilter(); },
+      });
+    }
+
+    function applyFilter() {
+      const q = normalize(query.trim());
+      let shown = 0;
+      for (const tile of container.querySelectorAll('.sons-tile[data-id]')) {
+        const sound = sounds.find((s) => s.id === tile.dataset.id);
+        const match = !q || (sound && normalize(sound.name).includes(q));
+        tile.hidden = !match;
+        tile.classList.toggle('can-reorder', !q); // reordenar só com a lista inteira à vista
+        if (match) shown++;
+      }
+      const none = container.querySelector('.sons-no-match');
+      if (none) none.hidden = !(q && shown === 0);
+    }
+
+    // Arrastar um cartão muda a ordem (guardada no app). Arrastar próprio, com o
+    // mouse: o cartão "levanta" e segue o ponteiro, o lugar dele vira um espaço
+    // tracejado e os outros cartões deslizam para abrir espaço. Só começa depois de
+    // mover uns pixels, para os cliques nos botões continuarem funcionando.
+    const DRAG_START_PX = 6;
+    const SLIDE_MS = 200;
+    const EASE = 'cubic-bezier(.2, .8, .2, 1)';
+    const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    let reorder = null; // { tile, pointerId, startX, startY, started, ghost, grid, library, baseX, baseY, original }
+
+    function onTilePointerDown(e) {
+      const tile = e.currentTarget;
+      if (e.button !== 0 || reorder || !tile.classList.contains('can-reorder')) return;
+      reorder = { tile, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, started: false };
+      window.addEventListener('pointermove', onReorderMove);
+      window.addEventListener('pointerup', onReorderEnd);
+      window.addEventListener('pointercancel', onReorderEnd);
+    }
+
+    function beginReorder() {
+      const { tile } = reorder;
+      const library = tile.closest('.sons-library');
+      const lib = library.getBoundingClientRect();
+      const r = tile.getBoundingClientRect();
+      // A cópia fica dentro do cartão "Seus sons" (mesmos estilos), por cima de tudo.
+      const ghost = tile.cloneNode(true);
+      ghost.classList.add('sons-tile-ghost');
+      ghost.removeAttribute('data-id');
+      ghost.setAttribute('aria-hidden', 'true');
+      reorder.baseX = r.left - lib.left - library.clientLeft;
+      reorder.baseY = r.top - lib.top - library.clientTop;
+      ghost.style.left = `${reorder.baseX}px`;
+      ghost.style.top = `${reorder.baseY}px`;
+      ghost.style.width = `${r.width}px`;
+      ghost.style.height = `${r.height}px`;
+      library.append(ghost);
+      tile.classList.add('reorder-placeholder');
+      document.body.classList.add('sons-reordering');
+      Object.assign(reorder, { started: true, ghost, library, grid: tile.parentElement, original: tileIds(tile.parentElement) });
+    }
+
+    const tileIds = (grid) => [...grid.querySelectorAll('.sons-tile[data-id]')].map((t) => t.dataset.id);
+
+    // Cartão sob o ponteiro, pela posição de layout (sem as animações em curso,
+    // para não ficar trocando de lugar enquanto os cartões deslizam).
+    function tileAt(x, y) {
+      const { grid } = reorder;
+      const g = grid.getBoundingClientRect();
+      const px = x - g.left - grid.clientLeft + grid.scrollLeft;
+      const py = y - g.top - grid.clientTop + grid.scrollTop;
+      return [...grid.querySelectorAll('.sons-tile[data-id]')].find((t) => !t.hidden
+        && px >= t.offsetLeft && px <= t.offsetLeft + t.offsetWidth && py >= t.offsetTop && py <= t.offsetTop + t.offsetHeight);
+    }
+
+    // Move o espaço vazio para o lugar do alvo e faz os cartões deslizarem (FLIP).
+    function moveTo(target) {
+      const { grid, tile } = reorder;
+      const tiles = [...grid.querySelectorAll('.sons-tile[data-id]')];
+      const before = new Map(tiles.map((t) => [t, t.getBoundingClientRect()]));
+      if (tiles.indexOf(tile) < tiles.indexOf(target)) target.after(tile); else target.before(tile);
+      if (reducedMotion()) return;
+      for (const t of tiles) {
+        const a = before.get(t);
+        const b = t.getBoundingClientRect();
+        const dx = a.left - b.left;
+        const dy = a.top - b.top;
+        if (dx || dy) t.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: SLIDE_MS, easing: EASE });
+      }
+    }
+
+    function onReorderMove(e) {
+      if (!reorder || e.pointerId !== reorder.pointerId) return;
+      const dx = e.clientX - reorder.startX;
+      const dy = e.clientY - reorder.startY;
+      if (!reorder.started) {
+        if (Math.hypot(dx, dy) < DRAG_START_PX) return;
+        beginReorder();
+      }
+      e.preventDefault();
+      reorder.ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.04) rotate(1deg)`;
+      // Perto da borda de cima ou de baixo da lista, rola a lista.
+      const g = reorder.grid.getBoundingClientRect();
+      if (e.clientY < g.top + 40) reorder.grid.scrollTop -= 14;
+      else if (e.clientY > g.bottom - 40) reorder.grid.scrollTop += 14;
+      const target = tileAt(e.clientX, e.clientY);
+      if (target && target !== reorder.tile) moveTo(target);
+    }
+
+    function onReorderEnd(e) {
+      if (!reorder || e.pointerId !== reorder.pointerId) return;
+      window.removeEventListener('pointermove', onReorderMove);
+      window.removeEventListener('pointerup', onReorderEnd);
+      window.removeEventListener('pointercancel', onReorderEnd);
+      const r = reorder;
+      if (!r.started) { reorder = null; return; } // foi só um clique
+      // O clique que vem depois de soltar não pode tocar o som.
+      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener('click', swallow, true);
+      setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+      const finish = () => {
+        r.ghost.remove();
+        r.tile.classList.remove('reorder-placeholder');
+        document.body.classList.remove('sons-reordering');
+        const ids = tileIds(r.grid);
+        reorder = null;
+        if (ids.join('\n') !== r.original.join('\n')) {
+          sounds = ids.map((id) => sounds.find((x) => x.id === id)).filter(Boolean);
+          api.setSoundOrder?.(ids).catch(() => {});
+        }
+        render();
+      };
+      if (reducedMotion()) { finish(); return; }
+      // A cópia "pousa" no espaço vazio antes de sumir.
+      const lib = r.library.getBoundingClientRect();
+      const dest = r.tile.getBoundingClientRect();
+      const toX = dest.left - lib.left - r.library.clientLeft - r.baseX;
+      const toY = dest.top - lib.top - r.library.clientTop - r.baseY;
+      const landing = r.ghost.animate(
+        [{ transform: r.ghost.style.transform }, { transform: `translate(${toX}px, ${toY}px) scale(1) rotate(0deg)` }],
+        { duration: 180, easing: EASE, fill: 'forwards' });
+      landing.onfinish = finish;
+      landing.oncancel = finish;
     }
 
     // O "Parar" do topo só aparece quando o cartão do som que está tocando saiu de
@@ -531,14 +830,15 @@ const plugin = {
         const error = await api.openSoundsFolder();
         if (error) setMessage(`Não foi possível abrir a pasta dos sons: ${error}`);
       };
-      return h('div', { class: 'sons-folder' },
+      // Cartão na coluna da direita, embaixo de "Para quem está na chamada".
+      return h('section', { class: 'card sons-folder' },
         h('div', { class: 'sons-folder-head' },
-          h('span', {}, 'Onde os sons ficam salvos'),
+          h('h3', {}, 'Onde os sons ficam salvos'),
           h('span', { class: 'sons-folder-tag' + (folder?.custom ? ' custom' : '') }, folder?.custom ? 'Escolhida por você' : 'Padrão')),
         h('div', { class: 'sons-folder-row' },
           h('button', {
             class: 'sons-folder-path',
-            // Dentro de Músicas mostra curto ("Músicas › UniHub"); o caminho inteiro fica na dica.
+            // Dentro de Músicas mostra curto ("Músicas › UnusHub"); o caminho inteiro fica na dica.
             title: folder?.music ? folder.path : 'Abrir no Explorador de Arquivos',
             'aria-label': `Abrir a pasta ${folder?.path || ''} no Explorador de Arquivos`,
             onclick: openFolder,
@@ -571,7 +871,7 @@ const plugin = {
     function soundTile(s, canMic) {
       const isPlaying = playingId === s.id;
       const main = canMic ? 'both' : 'ear';
-      return h('div', { class: 'sons-tile' + (isPlaying ? ' playing' : '') },
+      return h('div', { class: 'sons-tile can-reorder' + (isPlaying ? ' playing' : ''), 'data-id': s.id, onpointerdown: onTilePointerDown },
         h('button', {
           class: 'sons-play',
           title: isPlaying ? 'Parar' : (canMic ? 'Tocar no fone e no microfone' : 'Tocar no fone'),
@@ -583,7 +883,8 @@ const plugin = {
           isPlaying
             ? h('span', { class: 'sons-state' }, h('span', { class: 'sons-eq', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), 'tocando',
               h('span', { class: 'sons-time', translate: 'no' }, clockText()))
-            : h('span', { class: 'muted small' }, canMic ? 'Fone e microfone' : 'Só no fone')),
+            : h('span', { class: 'muted small sons-duration', translate: 'no', title: canMic ? 'Toca no fone e no microfone' : 'Toca só no fone' },
+              durations.has(s.id) ? durationText(durations.get(s.id)) : '–:––')),
         h('div', { class: 'sons-tile-actions' },
           iconButton(icons.headphones, 'Só no fone', () => play(s, 'ear')),
           iconButton(icons.mic, canMic ? 'Só no microfone' : 'Microfone não configurado', () => play(s, 'mic'), !canMic),
@@ -616,6 +917,16 @@ const plugin = {
         h('p', { class: 'muted small sons-volume-hint' }, 'Volume só dos sons: no fone é o que você ouve, no microfone é o que chega para quem está na chamada. Sua voz não muda.'));
     }
 
+    // Atalho global que para qualquer som tocando, mesmo com o UnusHub minimizado.
+    function stopHotkeyRow() {
+      return h('div', { class: 'sons-stop-hotkey' },
+        h('span', { class: 'sons-volume-icon', 'aria-hidden': 'true' }, icons.stopAll()),
+        h('span', { class: 'setting-text' },
+          h('span', { class: 'small' }, 'Parar todos os sons'),
+          h('small', { class: 'muted' }, 'Atalho que corta qualquer som tocando, mesmo com o UnusHub minimizado.')),
+        hotkeyButton(STOP_ENTRY));
+    }
+
     // O efeito é o caminho principal; o cabo virtual fica num link discreto, para
     // quem não pode instalar o efeito. Com o efeito instalado o link some.
     function modeSwitch() {
@@ -636,7 +947,7 @@ const plugin = {
 
     function cableSection(outputs, inputs, micOut, virtualFound) {
       return [
-        h('p', { class: 'muted small' }, 'Para quem está na chamada ouvir os sons, o UniHub toca na saída de um cabo de áudio virtual. No Discord, no jogo ou no app de chamada, escolha a entrada desse cabo como microfone.'),
+        h('p', { class: 'muted small' }, 'Para quem está na chamada ouvir os sons, o UnusHub toca na saída de um cabo de áudio virtual. No Discord, no jogo ou no app de chamada, escolha a entrada desse cabo como microfone.'),
         virtualFound ? null : h('p', { class: 'small' }, 'Nenhum cabo de áudio virtual encontrado. Instale um (por exemplo, VB-CABLE) e ele aparece aqui.'),
         select(micOut?.deviceId || '', [['', 'Escolha a saída do cabo virtual'], ...outputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('micOut', v)),
         h('label', { class: 'setting-row' },
@@ -655,6 +966,9 @@ const plugin = {
 
     function effectSection() {
       const intro = h('p', { class: 'muted small' }, 'Soma os sons ao seu microfone de verdade, sem cabo virtual: em jogos, gravadores e chamadas (Discord, Teams, WhatsApp). Não funciona em apps que usam o microfone em modo exclusivo.');
+      if (!effect.loaded) {
+        return [statusBadge('wait', 'Procurando microfones…'), intro];
+      }
       if (!effect.built) {
         return [statusBadge('off', 'Não compilado'), intro,
           h('p', { class: 'small' }, 'Rode native\\audio-mix\\compilar.cmd (precisa do Visual Studio Build Tools com C++).')];
@@ -663,33 +977,54 @@ const plugin = {
       const busy = !!effect.busy;
       if (installed) {
         return [
+          // O estado se atualiza sozinho (a aba confere a cada poucos segundos).
           h('div', { class: 'sons-status-row' },
-            effect.active ? statusBadge('on', 'Ativo') : statusBadge('wait', 'Esperando um app usar o microfone'),
-            iconButton(icons.refresh, 'Atualizar estado', () => refreshEffect(), busy)),
+            effect.active ? statusBadge('on', 'Ativo') : statusBadge('wait', 'Esperando um app usar o microfone')),
           h('div', { class: 'sons-mic' },
             h('span', { class: 'sons-mic-icon', 'aria-hidden': 'true' }, icons.mic()),
             h('span', {}, h('strong', {}, installed.name), h('span', { class: 'muted small' }, installed.device))),
           intro,
-          installed.calls ? null : h('p', { class: 'small' }, 'Esta instalação ainda não funciona em chamadas. Atualize para ligar (pede administrador e reinicia o som do Windows).'),
+          installed.bluetooth ? bluetoothWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chega na chamada. Remova o efeito e use o fone pelo cabo ou pelo dongle, ou um cabo virtual.') : null,
+          installed.calls || installed.bluetooth ? null : h('p', { class: 'small' }, 'Esta instalação ainda não funciona em chamadas. Atualize para ligar (pede administrador e reinicia o som do Windows).'),
+          // Efeito de uma versão anterior do app: instalar de novo troca a DLL pela nova.
+          effect.outdated && installed.calls && !installed.bluetooth
+            ? h('p', { class: 'small' }, 'Há uma versão nova do efeito. Atualize para usar (pede administrador e reinicia o som do Windows).')
+            : null,
           h('div', { class: 'sons-foot' },
-            installed.calls ? null : button(effect.busy === 'install' ? 'Atualizando…' : 'Atualizar para chamadas', () => effectAction('install', installed.id), { kind: 'primary', disabled: busy }),
+            installed.calls || installed.bluetooth ? null : button(effect.busy === 'install' ? 'Atualizando…' : 'Atualizar para chamadas', () => effectAction('install', installed.id), { kind: 'primary', disabled: busy }),
+            effect.outdated && installed.calls && !installed.bluetooth
+              ? button(effect.busy === 'install' ? 'Atualizando…' : 'Atualizar efeito', () => effectAction('install', installed.id), { kind: 'primary', disabled: busy })
+              : null,
             button('Remover efeito', () => effectAction('remove'), { disabled: busy })),
         ];
       }
-      const mics = effect.mics;
+      const mics = micChoices();
+      const chosen = chosenMic();
       return [
         statusBadge('off', 'Não instalado'),
         intro,
         mics.length === 0
-          ? h('p', { class: 'small' }, 'Nenhum microfone ativo encontrado.')
-          : select(prefs.effectMic || mics[0].id, mics.map((m) => [m.id, `${m.name} (${m.device})`]), (v) => setPref('effectMic', v)),
-        h('p', { class: 'muted small' }, 'A instalação pede permissão de administrador, guarda os efeitos atuais do microfone e reinicia o som do Windows. "Remover efeito" volta tudo como estava.'),
+          ? h('p', { class: 'small' }, effect.checking ? 'Procurando microfones…'
+            : effect.failed ? 'Não deu para ler os microfones do Windows. O UnusHub tenta de novo sozinho.'
+              : 'Nenhum microfone ativo encontrado. Ligue ou conecte um microfone: ele aparece aqui sozinho.')
+          : select(chosen.id, mics.map((m) => [m.id, `${m.name} (${m.device})${m.bluetooth ? ' · Bluetooth' : ''}`]), (v) => setPref('effectMic', v)),
+        chosen?.bluetooth
+          ? bluetoothWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chegaria na chamada. Ligue o fone pelo cabo ou pelo dongle e escolha esse microfone, ou use um cabo virtual.')
+          : h('p', { class: 'muted small' }, 'A instalação pede permissão de administrador, guarda os efeitos atuais do microfone e reinicia o som do Windows. "Remover efeito" volta tudo como estava.'),
         h('div', { class: 'sons-foot' },
-          button(busy ? 'Instalando…' : 'Instalar efeito', () => effectAction('install'), { kind: 'primary', disabled: busy || mics.length === 0 })),
+          button(busy ? 'Instalando…' : 'Instalar efeito', () => effectAction('install'), { kind: 'primary', disabled: busy || !chosen || chosen.bluetooth })),
       ];
     }
 
+    // Aviso de fone Bluetooth, com o atalho para o cabo virtual.
+    function bluetoothWarning(text) {
+      return h('div', { class: 'sons-bt-warning' },
+        h('p', { class: 'small' }, text),
+        h('button', { class: 'link-btn small', onclick: () => setPref('micMode', 'cable') }, 'Usar um cabo virtual'));
+    }
+
     navigator.mediaDevices?.addEventListener('devicechange', refreshDevices);
+    navigator.mediaDevices?.addEventListener('devicechange', scheduleEffectRefresh);
     render();
     refreshSounds().catch(() => {});
     if (api?.soundsFolder) refreshFolder().catch(() => {});
@@ -699,6 +1034,7 @@ const plugin = {
 
     const tab = {
       playById,
+      tryAutoInstall,
       update() {},
       unmount() {
         if (activeTab === tab) activeTab = null;
@@ -706,6 +1042,8 @@ const plugin = {
         tileObserver?.disconnect();
         stopRecording();
         navigator.mediaDevices?.removeEventListener('devicechange', refreshDevices);
+        navigator.mediaDevices?.removeEventListener('devicechange', scheduleEffectRefresh);
+        clearTimeout(effectRefreshTimer);
         stopAll();
         clearInterval(clock);
         clock = null;

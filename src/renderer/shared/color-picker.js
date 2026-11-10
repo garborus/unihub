@@ -1,4 +1,4 @@
-// Seletor de cores do UniHub, com confirmação.
+// Seletor de cores do UnusHub, com confirmação.
 //
 // O seletor nativo do navegador não aceita botões extras, então este faz o
 // mesmo papel: área saturação/brilho, barra de matiz, campos R/G/B e hex, e

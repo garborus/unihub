@@ -1,9 +1,9 @@
-# UniHub
+# UnusHub
 
 Um só app para configurar periféricos de vários fabricantes, no lugar de um "hub"
 oficial de cada marca. Cada tipo de aparelho (controles, headsets, teclados…) é uma aba que
 reconhece qualquer marca, com opções extras para as marcas cujo protocolo o
-UniHub já conhece (GameSir, MCHOSE, Logitech…).
+UnusHub já conhece (GameSir, MCHOSE, Logitech…).
 
 
 ## Estado
@@ -13,12 +13,12 @@ UniHub já conhece (GameSir, MCHOSE, Logitech…).
 | Gamepads | beta | todos os controles de jogo conectados, com teste de botões visual e informações. **Controles GameSir** (testado com Cyclone 2) ganham também: **editor de luzes** (animações, predefinições, quadros-chave, cores, brilho, velocidade, áudio, despertar, suspensão, indicador de perfil), vibração com animação, **mapeamento de botões** por perfil, taxa de relatório, bateria com aviso, backup de perfis, firmware |
 | Headsets | beta | fones e headsets de **qualquer marca**, pelo dongle, cabo USB ou Bluetooth: **Configurações de áudio** (teste de som esquerdo/direito, retorno do microfone, atalho para o som do Windows; funcionam no fone que é a saída de som padrão do Windows), informações do aparelho e, **por Bluetooth, a bateria** (lida do Windows, com aviso de bateria baixa). **Headsets Logitech** (HID++, **não testado com hardware**) ganham nome e bateria. **Headsets MCHOSE** (testado com V9 PRO) ganham também, pelo dongle, bateria com estado de carga e versão do firmware. Equalizador e surround ainda não (dependem do driver de áudio do fabricante) |
 | Teclados | beta | teclados de **qualquer marca**, com fio, pelo dongle, por **Bluetooth** (com o nome do aparelho) e o **teclado do notebook** (PS/2 ou interno, pela lista do Windows; testados só com exemplos): informações do aparelho (fabricante pelo VID, VID:PID) e **teste de teclas** visual (teclado padrão no layout do sistema, ou o desenho do modelo nas marcas conhecidas; teclas testadas, quantas teclas juntas). O teste usa as teclas que o Windows recebe, de qualquer teclado. **Teclados AULA série F** (testado com F75) são reconhecidos no cabo e pelo dongle 2.4G, com o modelo escolhido pelo usuário, o desenho de cada modelo no teste (F75, F87 e F99), a aba **Luzes** (efeito, brilho, velocidade e 7 cores por efeito) e, pelo dongle, a **bateria** com aviso de bateria baixa. Macros e troca de teclas ainda não |
-| Sons | beta | guarda áudios e toca cada um no fone, no microfone ou nos dois, com volume separado para cada um. Para quem está na chamada ouvir: pelo **efeito no microfone** (efeito de áudio do UniHub, instalado pela própria aba com permissão de administrador; funciona nos apps que deixam os efeitos do microfone ligados, como o Gravador de Som, e pode não funcionar no Discord) ou por um **cabo de áudio virtual** (ex.: VB-CABLE), com a opção de misturar a sua voz |
+| Sons | beta | guarda áudios e toca cada um no fone, no microfone ou nos dois, com volume separado para cada um. Para quem está na chamada ouvir: pelo **efeito no microfone** (efeito de áudio do UnusHub, instalado pela própria aba com permissão de administrador; funciona nos apps que deixam os efeitos do microfone ligados, como o Gravador de Som, e pode não funcionar no Discord) ou por um **cabo de áudio virtual** (ex.: VB-CABLE), com a opção de misturar a sua voz |
 | Dispositivos HID | ferramenta | lista todas as interfaces HID, para começar um novo hub |
 
 As abas só aparecem depois que você as ativa em **Configurações › Adicionar aba**
 (engrenagem no menu).
-Também em **Configurações**, dá para **iniciar o UniHub com o Windows**
+Também em **Configurações**, dá para **iniciar o UnusHub com o Windows**
 e, com isso ligado, deixá-lo na **bandeja do sistema**: ele começa só com o ícone
 perto do relógio, fechar a janela só a esconde, e os avisos de bateria continuam chegando.
 O menu pode ficar **em cima** (padrão) ou **à esquerda**, como barra lateral; à esquerda,
@@ -44,8 +44,18 @@ Build Tools com C++ e o SDK do Windows):
 native\audio-mix\compilar.cmd
 ```
 
-As versões 0.x portáteis avisam quando há uma versão nova nas releases do GitHub e
-se atualizam pelo próprio app (**Configurações › Atualizações**).
+Desde a 0.1.4 o UnusHub é distribuído com **instalador** (`UnusHub-Setup-<versão>.exe`
+nas releases do GitHub). O app instalado avisa quando há uma versão nova e se
+atualiza sozinho (**Configurações › Atualizações**), pelo `electron-updater`.
+
+Para gerar o instalador (sai em `dist`, com o `latest.yml` e o `.blockmap`, que vão
+junto na release):
+
+```bash
+npm run dist
+```
+
+O exe portátil (`npm run dist:portatil`) fica só para testes e não vai para as releases.
 
 Feche outros apps que usem o mesmo aparelho antes de usar a aba correspondente: dois
 apps disputando o mesmo dispositivo HID causam falhas de leitura.

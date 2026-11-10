@@ -15,6 +15,7 @@
 
 import { h, button } from '../core/dom.js';
 import { iconCard } from './icon-card.js';
+import { isVirtualDevice } from '../frontend/sons/devices.js';
 
 const TONE_S = 0.35; // duração de cada nota do teste
 const DEFAULT_MONITOR_VOLUME = 60; // %
@@ -212,6 +213,236 @@ export function headsetAudioTab({ matches, driverNote }) {
     render();
   }
   navigator.mediaDevices?.addEventListener('devicechange', onDeviceChange);
+  navigator.mediaDevices?.addEventListener('devicechange', refreshOutputs);
+
+  // --- Som do Windows: saída, microfone, chamadas, volume e mudo -------------------
+  // Pelo saidas.exe (processo principal). Trocar aqui vale para o computador inteiro,
+  // como em Configurações › Som. As listas são iguais às da aba Sons: sem cabos
+  // virtuais e os da Steam (a não ser o que já é padrão, para mostrar a verdade).
+  const api = window.unihub;
+  const hasWinAudio = !!(api?.audioDevices && api.setDefaultAudio);
+  let win = null; // { outputs, inputs } do Windows; null enquanto lê
+  let winBusy = false;
+
+  async function refreshOutputs() {
+    if (!hasWinAudio) return;
+    const result = await api.audioDevices().catch(() => null);
+    win = result || { outputs: [], inputs: [] };
+    if (root.isConnected || !root.dataset.mounted) render();
+  }
+
+  async function winAction(promise, error) {
+    winBusy = true;
+    message = '';
+    render();
+    const result = await promise.catch(() => ({ ok: false }));
+    winBusy = false;
+    if (!result.ok) message = error;
+    await refreshOutputs();
+  }
+
+  // Escolher na lista deixa o aparelho como padrão e também como o das chamadas
+  // (Discord, WhatsApp e Teams usam o "de chamadas", que o Windows guarda à parte).
+  const setDefault = (id, roles = 'todos') => winAction(api.setDefaultAudio(id, roles), 'Não foi possível trocar o aparelho padrão do Windows.');
+
+  // Saída do Windows com o mesmo nome deste fone (o Chromium põe "(VID:PID)" no fim).
+  const headsetWinOutput = () => (devices.output && win
+    ? win.outputs.find((o) => o.name === friendlyLabel(devices.output.label)) : null);
+
+  // Volume: muda enquanto arrasta (no máximo ~6 vezes por segundo) e no fim.
+  function volumeSlider(device, label) {
+    let timer = 0;
+    let last = device.volume;
+    const out = h('code', {}, `${device.volume}%`);
+    const send = (v) => { if (v !== last) { last = v; api.setAudioVolume(device.id, v).catch(() => {}); } };
+    const input = h('input', {
+      type: 'range', min: 0, max: 100, value: device.volume, 'aria-label': label, disabled: device.mute,
+      oninput: (e) => {
+        const v = Number(e.target.value);
+        out.textContent = `${v}%`;
+        device.volume = v;
+        clearTimeout(timer);
+        timer = setTimeout(() => send(v), 150);
+      },
+      onchange: (e) => { clearTimeout(timer); send(Number(e.target.value)); },
+    });
+    return h('div', { class: 'slider-row' }, input, out);
+  }
+
+  // Um bloco por tipo: lista do aparelho padrão, aviso se as chamadas usam outro,
+  // volume e (no microfone) mudo.
+  function winDeviceBlock(kind) {
+    const list = kind === 'output' ? win.outputs : win.inputs;
+    const title = kind === 'output' ? 'Saída padrão' : 'Microfone padrão';
+    const options = list.filter((d) => d.default || !isVirtualDevice(d.name));
+    if (!options.length) {
+      return h('div', { class: 'audio-win-block' }, h('span', { class: 'small' }, title),
+        h('p', { class: 'muted small' }, kind === 'output' ? 'Nenhuma saída de som ativa encontrada.' : 'Nenhum microfone ativo encontrado.'));
+    }
+    const current = list.find((d) => d.default) || options[0];
+    const comm = list.find((d) => d.comm);
+    const muteButton = kind === 'input' && current.volume !== null
+      ? h('button', {
+        class: 'btn secondary audio-mute' + (current.mute ? ' on' : ''), disabled: winBusy, 'aria-pressed': String(current.mute),
+        onclick: () => winAction(api.setAudioMute(current.id, !current.mute), 'Não foi possível mudar o mudo do microfone.'),
+      }, current.mute ? 'Microfone mudo' : 'Mudo')
+      : null;
+    return h('div', { class: 'audio-win-block' },
+      h('label', { class: 'audio-output-pick' },
+        h('span', { class: 'small' }, title),
+        h('select', { class: 'map-select', disabled: winBusy, onchange: (e) => setDefault(e.target.value) },
+          options.map((d) => h('option', { value: d.id, selected: d.id === current.id }, d.name)))),
+      comm && comm.id !== current.id
+        ? h('p', { class: 'muted small audio-comm' },
+          `Nas chamadas (Discord, WhatsApp, Teams) o Windows usa ${comm.name}. `,
+          h('button', { class: 'link-btn', disabled: winBusy, onclick: () => setDefault(current.id, 'chamadas') }, 'Usar o mesmo nas chamadas'))
+        : null,
+      current.volume !== null
+        ? h('div', { class: 'audio-volume' },
+          h('div', { class: 'audio-volume-head' },
+            h('span', { class: 'small' }, kind === 'output' ? 'Volume da saída' : 'Volume do microfone'),
+            muteButton),
+          volumeSlider(current, kind === 'output' ? 'Volume da saída' : 'Volume do microfone'))
+        : null);
+  }
+
+  function winAudioCard(openSettings) {
+    if (!hasWinAudio) {
+      return audioCard('monitor', 'Som do Windows', '',
+        h('p', { class: 'muted small' }, 'Volume geral, saída padrão e volume do microfone ficam nas configurações do Windows.'),
+        openSettings());
+    }
+    return audioCard('monitor', 'Som do Windows', 'audio-win',
+      win ? h('div', { class: 'audio-win-grid' }, winDeviceBlock('output'), winDeviceBlock('input'))
+        : h('p', { class: 'muted small' }, 'Lendo os aparelhos de som…'),
+      h('p', { class: 'muted small' }, 'Trocar aqui vale para o computador inteiro, como nas configurações de som do Windows. Escolher um aparelho também o deixa como o das chamadas.'),
+      openSettings());
+  }
+
+  // --- Medidor e gravação de 5 s do microfone ---------------------------------------
+  // Só abrem o microfone quando a pessoa pede (num fone Bluetooth isso troca o fone
+  // para o modo de chamada).
+  const RECORD_S = 5;
+  let meter = null; // { stream, ctx, raf }
+  let meterFill = null; // barra atual (render recria o elemento)
+  let meterLevel = 0;
+  let recording = null; // { left } enquanto grava; 'tocando' enquanto toca
+
+  async function startMeter() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: devices.input.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+    const ctx = new AudioContext();
+    const analyser = new AnalyserNode(ctx, { fftSize: 1024 });
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    meter = { stream, ctx, raf: 0 };
+    const tick = () => {
+      if (!meter) return;
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (const v of buf) sum += v * v;
+      const db = 20 * Math.log10(Math.sqrt(sum / buf.length) || 1e-6);
+      // -60 dB (silêncio) a 0 dB (máximo); cai devagar para a barra não tremer.
+      const level = Math.max(0, Math.min(1, (db + 60) / 60));
+      meterLevel = Math.max(level, meterLevel * 0.9);
+      if (meterFill) meterFill.style.transform = `scaleX(${meterLevel})`;
+      meter.raf = requestAnimationFrame(tick);
+    };
+    tick();
+    stream.getAudioTracks()[0]?.addEventListener('ended', () => stopMeter());
+  }
+
+  function stopMeter() {
+    if (!meter) return;
+    cancelAnimationFrame(meter.raf);
+    meter.stream.getTracks().forEach((t) => t.stop());
+    meter.ctx.close().catch(() => {});
+    meter = null;
+    meterLevel = 0;
+    if (meterFill) meterFill.style.transform = 'scaleX(0)';
+  }
+
+  // Grava 5 s do microfone deste fone e toca de volta no próprio fone.
+  async function recordAndPlay() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: devices.input.deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+    } catch (err) {
+      return showMessage(`Não foi possível abrir o microfone: ${err.message}.`);
+    }
+    const chunks = [];
+    const rec = new MediaRecorder(stream);
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    const stopped = new Promise((r) => { rec.onstop = r; });
+    rec.start();
+    recording = { left: RECORD_S };
+    render();
+    for (let s = RECORD_S; s > 0; s--) {
+      await new Promise((r) => setTimeout(r, 1000));
+      if (recording) recording.left = s - 1;
+      const el = root.querySelector('.audio-record-left');
+      if (el) el.textContent = `${Math.max(0, s - 1)} s`;
+    }
+    rec.stop();
+    await stopped;
+    stream.getTracks().forEach((t) => t.stop());
+    recording = 'tocando';
+    render();
+    let ac;
+    try {
+      // Fone Bluetooth: espera o fone sair do modo de chamada antes de tocar.
+      if (isBluetooth(devices.input)) await new Promise((r) => setTimeout(r, BLUETOOTH_SWITCH_MS));
+      const target = monitor?.sink || devices.output;
+      ac = await openSink(target, () => ac?.close().catch(() => {}));
+      const audio = await ac.decodeAudioData(await new Blob(chunks).arrayBuffer());
+      const src = new AudioBufferSourceNode(ac, { buffer: audio });
+      src.connect(ac.destination);
+      await new Promise((r) => { src.onended = r; src.start(); });
+    } catch (err) {
+      message = `Não foi possível tocar a gravação: ${err.message}.`;
+    } finally {
+      ac?.close().catch(() => {});
+      recording = null;
+      render();
+    }
+  }
+
+  function micTestBlock(canPlay) {
+    const { input } = devices;
+    meterFill = h('span', { class: 'audio-meter-fill' });
+    meterFill.style.transform = `scaleX(${meter ? meterLevel : 0})`;
+    const meterToggle = h('input', {
+      type: 'checkbox', class: 'switch', checked: !!meter, disabled: !input,
+      onchange: async (e) => {
+        if (!e.target.checked) return stopMeter();
+        e.target.disabled = true;
+        try {
+          await startMeter();
+        } catch (err) {
+          e.target.checked = false;
+          showMessage(`Não foi possível abrir o microfone: ${err.message}.`);
+        }
+        e.target.disabled = false;
+      },
+    });
+    const recordLabel = recording === 'tocando' ? 'Tocando a gravação…'
+      : recording ? h('span', {}, 'Gravando… fale agora ', h('span', { class: 'audio-record-left' }, `${recording.left} s`))
+        : `Gravar ${RECORD_S} s e ouvir`;
+    return h('div', { class: 'audio-mic-test' },
+      h('label', { class: 'setting-row' },
+        h('span', { class: 'setting-text' },
+          h('span', {}, 'Medir o microfone'),
+          h('small', { class: 'muted' }, input ? 'A barra mexe com a sua voz: confira se o microfone está captando, sem precisar se ouvir.'
+            : 'Microfone deste fone não encontrado.')),
+        meterToggle),
+      h('div', { class: 'audio-meter', 'aria-hidden': 'true' }, meterFill),
+      h('div', { class: 'audio-record' },
+        button(recordLabel, () => recordAndPlay(), { kind: 'secondary', disabled: !input || !canPlay || !!recording }),
+        canPlay ? null : h('small', { class: 'muted' }, 'Para ouvir a gravação, este fone precisa ser a saída padrão.')));
+  }
 
   function render() {
     const { output, input } = devices;
@@ -255,8 +486,11 @@ export function headsetAudioTab({ matches, driverNote }) {
     // Em tela larga ficam em duas colunas; o aviso de saída padrão ocupa as duas.
     root.replaceChildren(...[
       blocked ? audioCard('warning', 'Este fone não é a saída padrão', 'audio-warning',
-        h('p', { class: 'muted small' }, 'O Windows só deixa o UniHub tocar no fone que é a saída de som padrão. Escolha este fone em Configurações › Som › Saída para usar o teste e o retorno de voz.'),
-        openSettings()) : null,
+        h('p', { class: 'muted small' }, 'O Windows só deixa o UnusHub tocar no fone que é a saída de som padrão. Escolha este fone como saída padrão para usar o teste e o retorno de voz.'),
+        headsetWinOutput()
+          ? h('div', { class: 'audio-warning-actions' },
+            button(winBusy ? 'Trocando…' : 'Usar este fone como saída padrão', () => setDefault(headsetWinOutput().id), { kind: 'primary', disabled: winBusy }))
+          : openSettings()) : null,
       audioCard('speaker', 'Teste de som', '',
         h('p', { class: 'muted small' }, output
           ? `Toca duas notas no ${friendlyLabel(output.label)}. Confira se cada lado sai no ouvido certo.`
@@ -265,8 +499,9 @@ export function headsetAudioTab({ matches, driverNote }) {
           testButton('Esquerdo', -1, 'left'),
           testButton('Os dois', 0, 'both'),
           testButton('Direito', 1, 'right'))),
-      audioCard('mic', 'Ouvir o microfone', '',
-        h('label', { class: 'setting-row' },
+      audioCard('mic', 'Microfone', '',
+        micTestBlock(canPlay),
+        h('label', { class: 'setting-row audio-monitor-row' },
           h('span', { class: 'setting-text' },
             h('span', {}, 'Retorno de voz'),
             h('small', { class: 'muted' }, input && canPlay
@@ -275,15 +510,12 @@ export function headsetAudioTab({ matches, driverNote }) {
                 : 'Microfone ou saída de som deste fone não encontrados.')),
           toggle),
         isBluetooth(input) && !blocked ? h('p', { class: 'muted small' },
-          'Fone Bluetooth: com o retorno ligado, ele entra no modo de chamada e o som fica com qualidade menor até desligar.') : null,
+          'Fone Bluetooth: com o microfone aberto (medidor, gravação ou retorno), ele entra no modo de chamada e o som fica com qualidade menor até fechar.') : null,
         h('div', { class: 'audio-volume' },
           h('span', { class: 'small' }, 'Volume do retorno'),
           h('div', { class: 'slider-row' }, volume, volumeOut)),
         status),
-      // Com o aviso de saída padrão no topo, o atalho já está lá: um só basta.
-      blocked ? null : audioCard('monitor', 'Som do Windows', '',
-        h('p', { class: 'muted small' }, 'Volume geral, saída padrão e volume do microfone ficam nas configurações do Windows.'),
-        openSettings()),
+      winAudioCard(openSettings),
       driverNote ? audioCard('equalizer', 'Equalizador e surround', 'audio-note', h('p', { class: 'muted small' }, driverNote)) : null,
     ].filter(Boolean));
   }
@@ -292,6 +524,7 @@ export function headsetAudioTab({ matches, driverNote }) {
     .then(pick)
     .catch(() => { /* sem permissão: nada é tocado */ })
     .finally(render);
+  refreshOutputs();
 
   // Ao sair da aba (ou o headset sumir), desliga o retorno e libera o som.
   const watcher = setInterval(() => {
@@ -301,7 +534,9 @@ export function headsetAudioTab({ matches, driverNote }) {
     }
     clearInterval(watcher);
     navigator.mediaDevices?.removeEventListener('devicechange', onDeviceChange);
+    navigator.mediaDevices?.removeEventListener('devicechange', refreshOutputs);
     stopMonitor();
+    stopMeter();
   }, 500);
 
   return root;

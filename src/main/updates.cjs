@@ -1,13 +1,14 @@
-// Atualizações das versões 0.x portáteis, pelas releases do GitHub.
+// Atualizações pelas releases do GitHub.
 //
-// Temporário: na 1.0 o UniHub passa a ter instalador e usa o electron-updater,
-// que não funciona com o exe portátil. Até lá, o app consulta as releases,
+// Desde a 0.1.4 o UnusHub tem instalador, e a versão instalada se atualiza pelo
+// electron-updater (main.cjs). O exe portátil continua: ele consulta as releases,
 // baixa o exe novo para a pasta do exe atual e, ao reiniciar, troca um pelo outro.
 //
 // Só lógica pura aqui (dá para testar); a rede e os arquivos ficam no main.cjs.
 
 const REPO = 'garborus/unihub';
 const PORTABLE_ASSET = /-portable\.exe$/i;
+const INSTALLER_ASSET = /-Setup-[^/]*\.exe$/i;
 
 /** "v0.2.0-beta.1" -> { major, minor, patch, pre } ou null. */
 function parseVersion(text) {
@@ -40,11 +41,14 @@ function pickLatest(releases) {
   const r = candidates[0];
   if (!r) return null;
   const exe = (r.assets || []).find((a) => PORTABLE_ASSET.test(a.name || ''));
+  const setup = (r.assets || []).find((a) => INSTALLER_ASSET.test(a.name || ''));
   const downloadPrefix = `https://github.com/${REPO}/releases/download/`;
   return {
     version: String(r.tag_name).replace(/^v/, ''),
     notes: String(r.body || '').slice(0, 2000),
     page: String(r.html_url || `https://github.com/${REPO}/releases`),
+    // Instalador da versão (a versão instalada se atualiza por ele): só nome e tamanho.
+    installer: setup ? { name: setup.name, size: setup.size } : null,
     asset: exe && String(exe.browser_download_url || '').startsWith(downloadPrefix)
       ? {
         name: exe.name,
@@ -62,7 +66,7 @@ function swapScript(oldExe, newExe) {
   return [
     '@echo off',
     'chcp 65001 >nul',
-    'rem Troca o UniHub portátil pela versão baixada, depois que o app fechar.',
+    'rem Troca o UnusHub portátil pela versão baixada, depois que o app fechar.',
     'set /a tentativas=0',
     ':espera',
     'timeout /t 1 /nobreak >nul',
