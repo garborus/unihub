@@ -19,14 +19,25 @@ static const CLSID CLSID_MixApo = { 0x6b1f3c2a, 0x8e4d, 0x4f7b, { 0x9a, 0x15, 0x
 
 static HMODULE g_modulo = nullptr;
 
-// Diagnóstico: uma linha por evento em C:\ProgramData\UniHub\audio-mix.log (a pasta é
+// Diagnóstico: uma linha por evento em %ProgramData%\UniHub\audio-mix.log (a pasta é
 // criada pelo instalar.ps1 com escrita liberada para o serviço de áudio).
 // Nunca chamado de dentro do APOProcess, que é tempo real.
 //
-// Desligado no uso normal. Liga só se existir o arquivo C:\ProgramData\UniHub\log-ligado
+// Desligado no uso normal. Liga só se existir o arquivo %ProgramData%\UniHub\log-ligado
 // (conferido uma vez, quando a DLL carrega), e o registro recomeça ao passar de 1 MB.
+
+// Caminho de um arquivo na pasta de diagnóstico. %ProgramData% e não C:\ fixo: o
+// Windows pode estar em outra unidade.
+static const wchar_t* ArquivoDiag(const wchar_t* nome, wchar_t* buf, size_t n) {
+  wchar_t base[MAX_PATH];
+  const DWORD lido = GetEnvironmentVariableW(L"ProgramData", base, MAX_PATH);
+  swprintf_s(buf, n, L"%s\\UniHub\\%s", (lido > 0 && lido < MAX_PATH) ? base : L"C:\\ProgramData", nome);
+  return buf;
+}
+
 static bool LogLigado() {
-  static const bool ligado = GetFileAttributesW(L"C:\\ProgramData\\UniHub\\log-ligado") != INVALID_FILE_ATTRIBUTES;
+  wchar_t caminho[MAX_PATH + 40];
+  static const bool ligado = GetFileAttributesW(ArquivoDiag(L"log-ligado", caminho, MAX_PATH + 40)) != INVALID_FILE_ATTRIBUTES;
   return ligado;
 }
 
@@ -44,14 +55,16 @@ static void Log(const wchar_t* formato, ...) {
   texto[n++] = L'\n';
   char utf8[1024];
   int bytes = WideCharToMultiByte(CP_UTF8, 0, texto, n, utf8, sizeof(utf8), nullptr, nullptr);
-  HANDLE f = CreateFileW(L"C:\\ProgramData\\UniHub\\audio-mix.log", FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+  wchar_t arquivo[MAX_PATH + 40];
+  ArquivoDiag(L"audio-mix.log", arquivo, MAX_PATH + 40);
+  HANDLE f = CreateFileW(arquivo, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                          nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (f == INVALID_HANDLE_VALUE) return;
   LARGE_INTEGER tamanho;
   if (GetFileSizeEx(f, &tamanho) && tamanho.QuadPart > 1024 * 1024) {
     // Passou de 1 MB: recomeça o arquivo (FILE_APPEND_DATA não deixa truncar).
     CloseHandle(f);
-    f = CreateFileW(L"C:\\ProgramData\\UniHub\\audio-mix.log", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    f = CreateFileW(arquivo, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                     nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return;
   }
@@ -193,13 +206,22 @@ public:
 
     bool somou = false;
     if (m_canal && m_canal->magico == CANAL_MAGICO) {
+      // O tamanho do anel é o fixo (CANAL_QUADROS), nunca o que está escrito no canal:
+      // o canal é memória que outros programas alcançam, e um valor errado ali (zero,
+      // por exemplo) derrubaria o serviço de áudio do Windows.
+      const int64_t anel = CANAL_QUADROS;
       const int64_t escritos = m_canal->escritos;
+      // Posição fora do possível (canal recriado ou corrompido): recomeça do agora.
+      if (m_lidos > escritos || m_lidos < 0) m_lidos = escritos;
       // Atrasou mais que o anel: pula para o que ainda está lá.
-      if (escritos - m_lidos > static_cast<int64_t>(m_canal->quadros)) m_lidos = escritos - m_canal->quadros;
-      // Converte 48000 Hz para a taxa do microfone pegando a amostra mais próxima.
+      if (escritos - m_lidos > anel) m_lidos = escritos - anel;
+      // Converte 48000 Hz para a taxa do microfone, interpolando entre duas amostras
+      // (a 48000 Hz a fração fica em zero e a amostra sai igual).
       const double passo = static_cast<double>(CANAL_TAXA) / (m_taxa > 0 ? m_taxa : CANAL_TAXA);
       for (UINT32 q = 0; q < quadros && m_lidos < escritos; q++) {
-        const float amostra = m_canal->dados[m_lidos % m_canal->quadros];
+        const float atual = m_canal->dados[m_lidos % anel];
+        const float proxima = (m_lidos + 1 < escritos) ? m_canal->dados[(m_lidos + 1) % anel] : atual;
+        const float amostra = atual + (proxima - atual) * static_cast<float>(m_fracao);
         for (UINT32 c = 0; c < canais; c++) {
           float v = destino[q * canais + c] + amostra;
           destino[q * canais + c] = v > 1.f ? 1.f : (v < -1.f ? -1.f : v);

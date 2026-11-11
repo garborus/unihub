@@ -60,7 +60,8 @@ contextBridge.exposeInMainWorld('unihub', {
   micEffectInstall: (micId) => ipcRenderer.invoke('mic-effect:install', micId),
   micEffectRemove: () => ipcRenderer.invoke('mic-effect:remove'),
   /** Toca no microfone pelo efeito: Float32Array mono 48 kHz. { code } (0 ok, 3 efeito inativo). */
-  micEffectPlay: (samples) => ipcRenderer.invoke('mic-effect:play', samples),
+  micEffectPlay: (samples, volume) => ipcRenderer.invoke('mic-effect:play', samples, volume),
+  micEffectVolume: (volume) => ipcRenderer.invoke('mic-effect:volume', volume),
   micEffectStop: () => ipcRenderer.invoke('mic-effect:stop'),
   /** Atualizações (0.x portátil): { current, latest, newer, canInstall, downloaded, error }. */
   checkUpdate: () => ipcRenderer.invoke('update:check'),

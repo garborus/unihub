@@ -106,6 +106,20 @@ web e do Electron (exemplo: somar sons ao microfone dentro do Windows). Nesse ca
 - **Pequeno e isolado.** A DLL faz só a parte que o app não consegue; o resto
   continua no app. Se a DLL não estiver instalada, o app funciona sem o recurso.
 
+O que fica em `native/audio-mix` (compilado por `compilar.cmd`, só com DLLs do
+próprio Windows, sem pacotes extras):
+
+- `efeito/`: a DLL do efeito no microfone. Ao mudar a DLL, suba o número em
+  `versao.txt`: o app compara com o instalado e oferece "Atualizar efeito".
+- `ponte/`: `ponte.exe`, que manda o som do app para o efeito.
+- `saidas/`: `saidas.exe`, que lista os aparelhos de som do Windows, troca o
+  padrão, volume e mudo, e lê o estado do efeito em cada microfone.
+- `instalar.ps1` e `remover.ps1`: instalam e removem o efeito, como administrador.
+  Ficam em UTF-8 com BOM, senão o PowerShell 5 lê os acentos errado.
+
+O efeito não funciona em microfone de fone Bluetooth (o Windows não roda efeitos
+nele) nem em Windows ARM (a DLL é x64); nesses casos a aba Sons oferece o cabo virtual.
+
 ## Limitações conhecidas
 
 - Dois controles idênticos aparecem com o mesmo nome. Para saber qual é qual,

@@ -52,8 +52,11 @@ let autoInstallEffect = false;
 // Atalho que para todos os sons (gravado e guardado como os atalhos dos sons).
 const STOP_ENTRY = { id: STOP_HOTKEY_ID, name: 'Parar todos os sons' };
 
-// Duração de um som em m:ss (ex.: 0:01, 3:18).
+// Tempo em m:ss (ex.: 0:01, 3:18), sem arredondar para cima: é o quanto já tocou.
 const durationText = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+// Duração total de um som: arredonda para o segundo mais perto e nunca mostra 0:00
+// (um som de 0,8 s aparece como 0:01).
+const totalText = (s) => durationText(Math.max(1, Math.round(s)));
 
 window.unihub?.onSoundHotkey?.((id) => {
   if (!activeTab && !backgroundTab) backgroundTab = plugin.mount(document.createElement('div'));
@@ -235,10 +238,18 @@ const plugin = {
       await refreshEffect();
     }
 
-    // No microfone pelo efeito: o som vai pronto (mono, 48 kHz, no volume) para a ponte.
+    // Volume novo (0 a 100) para o som que já está tocando no microfone: pelo efeito
+    // ou pelo cabo virtual.
+    function liveMicVolume(value) {
+      if (effectPlaying) api.micEffectVolume?.(value / 100);
+      if (sinks.mic) sinks.mic.gain.gain.value = value / 100;
+    }
+
+    // No microfone pelo efeito: o som vai pronto (mono, 48 kHz) para a ponte, no volume
+    // cheio; o volume é aplicado na hora de tocar, para poder mudar no meio.
     async function playOnEffect(sound, buffer) {
       effectPlaying = true;
-      const result = await api.micEffectPlay(mixToMono(channelsOf(buffer), prefs.volumeMic / 100));
+      const result = await api.micEffectPlay(mixToMono(channelsOf(buffer)), prefs.volumeMic / 100);
       if (!effectPlaying) return; // parado no meio
       effectPlaying = false;
       // O resultado do envio também diz o estado: 0 = tinha app usando, 3 = não tinha
@@ -328,9 +339,9 @@ const plugin = {
         if (!value) stopVoice();
         else if (sinks.mic) await startVoice().catch((err) => { message = `Não foi possível ouvir o microfone: ${err.message}.`; });
       }
-      // Muda na hora o som que já está tocando (no efeito, vale a partir do próximo som).
+      // Muda na hora o som que já está tocando.
       if (key === 'volumeEar' && sinks.ear) sinks.ear.gain.gain.value = value / 100;
-      if (key === 'volumeMic' && sinks.mic) sinks.mic.gain.gain.value = value / 100;
+      if (key === 'volumeMic') liveMicVolume(value);
       render();
     }
 
@@ -506,7 +517,7 @@ const plugin = {
     // "0:01/0:13": quanto já tocou e quanto o som dura.
     const clockText = () => {
       const elapsed = Math.min((performance.now() - playStart) / 1000, playDuration);
-      return `${durationText(elapsed)}/${durationText(playDuration)}`;
+      return `${durationText(elapsed)}/${totalText(playDuration)}`;
     };
 
     function syncClock() {
@@ -708,7 +719,7 @@ const plugin = {
             ? h('span', { class: 'sons-state' }, h('span', { class: 'sons-eq', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), 'tocando',
               h('span', { class: 'sons-time', translate: 'no' }, clockText()))
             : h('span', { class: 'muted small sons-duration', translate: 'no', title: canMic ? 'Toca no fone e no microfone' : 'Toca só no fone' },
-              durations.has(s.id) ? durationText(durations.get(s.id)) : '–:––')),
+              durations.has(s.id) ? totalText(durations.get(s.id)) : '–:––')),
         h('div', { class: 'sons-tile-actions' },
           iconButton(icons.headphones, 'Só no fone', () => play(s, 'ear')),
           iconButton(icons.mic, canMic ? 'Só no microfone' : 'Microfone não configurado', () => play(s, 'mic'), !canMic),
@@ -728,8 +739,9 @@ const plugin = {
             type: 'range', min: 0, max: 100, value: prefs[key], 'aria-label': `Volume ${label.toLowerCase()}`,
             oninput: (e) => {
               out.textContent = `${e.target.value}%`;
-              const s = sinks[kind];
-              if (s) s.gain.gain.value = Number(e.target.value) / 100; // ouve a mudança enquanto arrasta
+              // Ouve a mudança enquanto arrasta.
+              if (kind === 'mic') liveMicVolume(Number(e.target.value));
+              else if (sinks.ear) sinks.ear.gain.gain.value = Number(e.target.value) / 100;
             },
             onchange: (e) => setPref(key, Number(e.target.value)),
           }),
@@ -800,27 +812,36 @@ const plugin = {
       const installed = effectMic();
       const busy = !!effect.busy;
       if (installed) {
+        // O que falta para o efeito funcionar bem neste microfone. Tudo se resolve
+        // instalando de novo por cima (pede administrador e reinicia o som do Windows).
+        const fix = installed.bluetooth ? null
+          : !installed.calls ? { text: 'Esta instalação ainda não funciona em chamadas. Atualize para ligar (pede administrador e reinicia o som do Windows).', label: 'Atualizar para chamadas' }
+            : installed.enhancementsOff ? { text: 'As melhorias de áudio do Windows estão desligadas neste microfone, e sem elas o efeito não roda. Ligue para os sons chegarem (pede administrador e reinicia o som do Windows).', label: 'Ligar melhorias de áudio' }
+              // Efeito de uma versão anterior do app: instalar de novo troca a DLL pela nova.
+              : effect.outdated ? { text: 'Há uma versão nova do efeito. Atualize para usar (pede administrador e reinicia o som do Windows).', label: 'Atualizar efeito' }
+                : null;
         return [
           // O estado se atualiza sozinho (a aba confere a cada poucos segundos).
           h('div', { class: 'sons-status-row' },
-            effect.active ? statusBadge('on', 'Ativo') : statusBadge('wait', 'Esperando um app usar o microfone')),
+            installed.enhancementsOff && !installed.bluetooth ? statusBadge('off', 'Melhorias de áudio desligadas')
+              : effect.active ? statusBadge('on', 'Ativo') : statusBadge('wait', 'Esperando um app usar o microfone')),
           h('div', { class: 'sons-mic' },
             h('span', { class: 'sons-mic-icon', 'aria-hidden': 'true' }, icons.mic()),
             h('span', {}, h('strong', {}, installed.name), h('span', { class: 'muted small' }, installed.device))),
           intro,
-          installed.bluetooth ? bluetoothWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chega na chamada. Remova o efeito e use o fone pelo cabo ou pelo dongle, ou um cabo virtual.') : null,
-          installed.calls || installed.bluetooth ? null : h('p', { class: 'small' }, 'Esta instalação ainda não funciona em chamadas. Atualize para ligar (pede administrador e reinicia o som do Windows).'),
-          // Efeito de uma versão anterior do app: instalar de novo troca a DLL pela nova.
-          effect.outdated && installed.calls && !installed.bluetooth
-            ? h('p', { class: 'small' }, 'Há uma versão nova do efeito. Atualize para usar (pede administrador e reinicia o som do Windows).')
-            : null,
+          // Apps de chamada tratam música e efeitos como ruído e cortam pedaços.
+          installed.bluetooth ? null : h('p', { class: 'muted small' }, 'Se o som chegar cortado ou chiando na chamada, desligue a supressão de ruído e o cancelamento de eco no app de chamada (no Discord, em Voz e Vídeo).'),
+          installed.bluetooth ? cableWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chega na chamada. Remova o efeito e use o fone pelo cabo ou pelo dongle, ou um cabo virtual.') : null,
+          fix ? h('p', { class: 'small' }, fix.text) : null,
           h('div', { class: 'sons-foot' },
-            installed.calls || installed.bluetooth ? null : button(effect.busy === 'install' ? 'Atualizando…' : 'Atualizar para chamadas', () => effectAction('install', installed.id), { kind: 'primary', disabled: busy }),
-            effect.outdated && installed.calls && !installed.bluetooth
-              ? button(effect.busy === 'install' ? 'Atualizando…' : 'Atualizar efeito', () => effectAction('install', installed.id), { kind: 'primary', disabled: busy })
-              : null,
+            fix ? button(effect.busy === 'install' ? 'Atualizando…' : fix.label, () => effectAction('install', installed.id), { kind: 'primary', disabled: busy }) : null,
             button('Remover efeito', () => effectAction('remove'), { disabled: busy })),
         ];
+      }
+      // Windows em ARM: o serviço de áudio não carrega a DLL do efeito (x64).
+      if (effect.arm64) {
+        return [statusBadge('off', 'Indisponível neste computador'), intro,
+          cableWarning('O efeito no microfone ainda não funciona em computadores com processador ARM. Use um cabo de áudio virtual.')];
       }
       const mics = micChoices();
       const chosen = chosenMic();
@@ -833,15 +854,16 @@ const plugin = {
               : 'Nenhum microfone ativo encontrado. Ligue ou conecte um microfone: ele aparece aqui sozinho.')
           : select(chosen.id, mics.map((m) => [m.id, `${m.name} (${m.device})${m.bluetooth ? ' · Bluetooth' : ''}`]), (v) => setPref('effectMic', v)),
         chosen?.bluetooth
-          ? bluetoothWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chegaria na chamada. Ligue o fone pelo cabo ou pelo dongle e escolha esse microfone, ou use um cabo virtual.')
+          ? cableWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chegaria na chamada. Ligue o fone pelo cabo ou pelo dongle e escolha esse microfone, ou use um cabo virtual.')
           : h('p', { class: 'muted small' }, 'A instalação pede permissão de administrador, guarda os efeitos atuais do microfone e reinicia o som do Windows. "Remover efeito" volta tudo como estava.'),
         h('div', { class: 'sons-foot' },
           button(busy ? 'Instalando…' : 'Instalar efeito', () => effectAction('install'), { kind: 'primary', disabled: busy || !chosen || chosen.bluetooth })),
       ];
     }
 
-    // Aviso de fone Bluetooth, com o atalho para o cabo virtual.
-    function bluetoothWarning(text) {
+    // Aviso de que o efeito não serve aqui (fone Bluetooth, Windows em ARM), com o
+    // atalho para o cabo virtual.
+    function cableWarning(text) {
       return h('div', { class: 'sons-bt-warning' },
         h('p', { class: 'small' }, text),
         h('button', { class: 'link-btn small', onclick: () => setPref('micMode', 'cable') }, 'Usar um cabo virtual'));

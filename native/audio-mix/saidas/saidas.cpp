@@ -8,6 +8,13 @@
 // Uso: saidas.exe --listar                  -> {"saidas":[…],"microfones":[…]}
 //        cada item: {"id","name","default","comm","volume":0-100,"mute":bool}
 //        default = padrão do Windows; comm = padrão das chamadas (Discord, WhatsApp…)
+//      saidas.exe --microfones              -> {"arm64":bool,"microfones":[…]}
+//        microfones ativos e o estado do efeito do UnusHub em cada um (só leitura):
+//        {"id":"{guid}","name","device","bus","installed","calls","sysfxOff"}
+//        installed = o efeito está numa lista de efeitos do microfone; calls = na
+//        lista de ponta (vale nas chamadas); sysfxOff = as "melhorias de áudio" do
+//        Windows estão desligadas nele (aí nenhum efeito roda); bus = quem criou o
+//        aparelho (USB, BTHHFENUM…); arm64 = Windows em ARM64, onde a DLL x64 não carrega.
 //      saidas.exe --padrao <id> <todos|normal|chamadas>
 //      saidas.exe --volume <id> <0-100>
 //      saidas.exe --mudo <id> <0|1>
@@ -20,6 +27,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
+#include <vector>
+#include "../comum/canal.h"
 
 // Interface sem documentação oficial, estável desde o Windows 7 (é a que a tela de
 // Som do Windows usa). Só SetDefaultEndpoint é chamada; as outras ficam para manter
@@ -116,6 +125,88 @@ static std::string Lista(IMMDeviceEnumerator* en, EDataFlow fluxo) {
   return out + "]";
 }
 
+// --- Microfones e o efeito do UnusHub (só leitura) ------------------------------------
+
+// Propriedades do aparelho, como o Windows guarda (MMDevices\Audio\Capture\{id}\Properties).
+static const PROPERTYKEY PK_NOME = { { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 2 };
+static const PROPERTYKEY PK_APARELHO = { { 0xb3f8fa53, 0x0004, 0x438e, { 0x90, 0x03, 0x51, 0xa4, 0x6e, 0x13, 0x9b, 0xfc } }, 6 };
+static const PROPERTYKEY PK_BARRAMENTO = { { 0xa45c254e, 0xdf1c, 0x4efd, { 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0 } }, 24 };
+
+static std::string Texto(IPropertyStore* props, const PROPERTYKEY& chave) {
+  std::string out;
+  PROPVARIANT v;
+  PropVariantInit(&v);
+  if (props && SUCCEEDED(props->GetValue(chave, &v)) && v.vt == VT_LPWSTR) out = Utf8(v.pwszVal);
+  PropVariantClear(&v);
+  return out;
+}
+
+// Uma lista de efeitos do registro (texto ou vários textos) contém o efeito?
+static bool ListaTemEfeito(HKEY fx, const wchar_t* valor) {
+  DWORD bytes = 0;
+  if (RegGetValueW(fx, nullptr, valor, RRF_RT_REG_SZ | RRF_RT_REG_MULTI_SZ, nullptr, nullptr, &bytes) != ERROR_SUCCESS || bytes < sizeof(wchar_t)) return false;
+  std::vector<wchar_t> buf(bytes / sizeof(wchar_t) + 2, L'\0');
+  if (RegGetValueW(fx, nullptr, valor, RRF_RT_REG_SZ | RRF_RT_REG_MULTI_SZ, nullptr, buf.data(), &bytes) != ERROR_SUCCESS) return false;
+  // Os itens vêm separados por \0: troca por espaço para procurar no texto inteiro.
+  const size_t n = bytes / sizeof(wchar_t);
+  for (size_t i = 0; i < n; i++) if (buf[i] == L'\0') buf[i] = L' ';
+  buf[n] = L'\0';
+  _wcsupr_s(buf.data(), buf.size());
+  return wcsstr(buf.data(), EFEITO_CLSID_TEXTO) != nullptr; // o CLSID já está em maiúsculas
+}
+
+// Windows em ARM64? (o app x64 roda emulado, mas o serviço de áudio não carrega DLL x64)
+static bool Arm64() {
+  typedef BOOL(WINAPI* Fn)(HANDLE, USHORT*, USHORT*);
+  const Fn fn = reinterpret_cast<Fn>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "IsWow64Process2"));
+  USHORT processo = 0, nativo = 0;
+  return fn && fn(GetCurrentProcess(), &processo, &nativo) && nativo == 0xAA64; // IMAGE_FILE_MACHINE_ARM64
+}
+
+static int Microfones(IMMDeviceEnumerator* en) {
+  std::string out = std::string("{\"arm64\":") + (Arm64() ? "true" : "false") + ",\"microfones\":[";
+  IMMDeviceCollection* lista = nullptr;
+  bool primeiro = true;
+  if (SUCCEEDED(en->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &lista))) {
+    UINT total = 0;
+    lista->GetCount(&total);
+    for (UINT i = 0; i < total; i++) {
+      IMMDevice* d = nullptr;
+      if (FAILED(lista->Item(i, &d))) continue;
+      LPWSTR id = nullptr;
+      if (SUCCEEDED(d->GetId(&id))) {
+        // "{0.0.1.00000000}.{guid}": a parte depois do ponto é o nome da chave no registro.
+        const wchar_t* guid = wcsstr(id, L"}.");
+        guid = guid ? guid + 2 : id;
+        IPropertyStore* props = nullptr;
+        d->OpenPropertyStore(STGM_READ, &props);
+        bool instalado = false, chamadas = false, semMelhorias = false;
+        const std::wstring chave = std::wstring(L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Capture\\") + guid + L"\\FxProperties";
+        HKEY fx = nullptr;
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, chave.c_str(), 0, KEY_QUERY_VALUE, &fx) == ERROR_SUCCESS) {
+          chamadas = ListaTemEfeito(fx, L"{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},15"); // efeitos de ponta
+          instalado = chamadas || ListaTemEfeito(fx, L"{d04e05a6-594b-4fb6-a80d-01af5eed7d1d},13"); // de fluxo (versões antigas)
+          DWORD desligado = 0, tam = sizeof(desligado);
+          if (RegGetValueW(fx, nullptr, L"{1da5d803-d492-4edd-8c23-e0c0ffee7f0e},5", RRF_RT_REG_DWORD, nullptr, &desligado, &tam) == ERROR_SUCCESS)
+            semMelhorias = desligado != 0;
+          RegCloseKey(fx);
+        }
+        if (!primeiro) out += ",";
+        primeiro = false;
+        out += "{\"id\":\"" + Json(Utf8(guid)) + "\",\"name\":\"" + Json(Texto(props, PK_NOME)) + "\",\"device\":\"" + Json(Texto(props, PK_APARELHO))
+          + "\",\"bus\":\"" + Json(Texto(props, PK_BARRAMENTO)) + "\",\"installed\":" + (instalado ? "true" : "false")
+          + ",\"calls\":" + (chamadas ? "true" : "false") + ",\"sysfxOff\":" + (semMelhorias ? "true" : "false") + "}";
+        if (props) props->Release();
+        CoTaskMemFree(id);
+      }
+      d->Release();
+    }
+    lista->Release();
+  }
+  printf("%s]}\n", out.c_str());
+  return 0;
+}
+
 // Aparelho ativo pelo id (saída ou microfone), ou nullptr.
 static IMMDevice* Ativo(IMMDeviceEnumerator* en, const wchar_t* id) {
   IMMDevice* d = nullptr;
@@ -168,7 +259,8 @@ int wmain(int argc, wchar_t** argv) {
     if (argc == 2 && !wcscmp(argv[1], L"--listar")) {
       printf("{\"saidas\":%s,\"microfones\":%s}\n", Lista(en, eRender).c_str(), Lista(en, eCapture).c_str());
       codigo = 0;
-    } else if (argc == 4 && !wcscmp(argv[1], L"--padrao")) codigo = Padrao(en, argv[2], argv[3]);
+    } else if (argc == 2 && !wcscmp(argv[1], L"--microfones")) codigo = Microfones(en);
+    else if (argc == 4 && !wcscmp(argv[1], L"--padrao")) codigo = Padrao(en, argv[2], argv[3]);
     else if (argc == 4 && !wcscmp(argv[1], L"--volume")) codigo = Volume(en, argv[2], argv[3], false);
     else if (argc == 4 && !wcscmp(argv[1], L"--mudo")) codigo = Volume(en, argv[2], argv[3], true);
     else codigo = Erro("uso");
