@@ -146,7 +146,7 @@ function register(ctx) {
 
   ipcMain.handle('update:open-page', (_event, url) => {
     // Só páginas de release deste repositório.
-    if (typeof url === 'string' && url.startsWith(`https://github.com/${updates.REPO}/releases`)) shell.openExternal(url);
+    if (updates.isReleaseUrl(url) || updates.isReleaseUrl(`${url}/`)) shell.openExternal(url);
   });
 }
 

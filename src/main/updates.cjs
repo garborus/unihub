@@ -6,9 +6,18 @@
 //
 // Só lógica pura aqui (dá para testar); a rede e os arquivos ficam no main.cjs.
 
-const REPO = 'garborus/unihub';
+// O repositório se chamava garborus/unihub; o GitHub redireciona o nome antigo.
+const REPO = 'garborus/UnusHub';
 const PORTABLE_ASSET = /-portable\.exe$/i;
 const INSTALLER_ASSET = /-Setup-[^/]*\.exe$/i;
+
+/**
+ * Se o endereço é das releases deste repositório (rest: "" ou "download/").
+ * Sem diferenciar maiúsculas: o GitHub não diferencia no nome do repositório.
+ */
+function isReleaseUrl(url, rest = '') {
+  return typeof url === 'string' && url.toLowerCase().startsWith(`https://github.com/${REPO}/releases/${rest}`.toLowerCase());
+}
 
 /** "v0.2.0-beta.1" -> { major, minor, patch, pre } ou null. */
 function parseVersion(text) {
@@ -42,14 +51,13 @@ function pickLatest(releases) {
   if (!r) return null;
   const exe = (r.assets || []).find((a) => PORTABLE_ASSET.test(a.name || ''));
   const setup = (r.assets || []).find((a) => INSTALLER_ASSET.test(a.name || ''));
-  const downloadPrefix = `https://github.com/${REPO}/releases/download/`;
   return {
     version: String(r.tag_name).replace(/^v/, ''),
     notes: String(r.body || '').slice(0, 2000),
     page: String(r.html_url || `https://github.com/${REPO}/releases`),
     // Instalador da versão (a versão instalada se atualiza por ele): só nome e tamanho.
     installer: setup ? { name: setup.name, size: setup.size } : null,
-    asset: exe && String(exe.browser_download_url || '').startsWith(downloadPrefix)
+    asset: exe && isReleaseUrl(exe.browser_download_url, 'download/')
       ? {
         name: exe.name,
         size: exe.size,
@@ -81,4 +89,4 @@ function swapScript(oldExe, newExe) {
   ].join('\r\n');
 }
 
-module.exports = { REPO, parseVersion, compareVersions, pickLatest, swapScript };
+module.exports = { REPO, isReleaseUrl, parseVersion, compareVersions, pickLatest, swapScript };

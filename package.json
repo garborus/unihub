@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/garborus/unihub.git"
+    "url": "https://github.com/garborus/UnusHub.git"
   },
   "type": "module",
   "main": "src/main/main.cjs",
@@ -73,7 +73,7 @@
     "publish": {
       "provider": "github",
       "owner": "garborus",
-      "repo": "unihub",
+      "repo": "UnusHub",
       "releaseType": "prerelease"
     }
   },
