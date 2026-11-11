@@ -5,21 +5,17 @@
 // como VB-CABLE ou VoiceMeeter). O que entra na saída do cabo sai na entrada
 // dele, e essa entrada é escolhida como microfone no Discord, no jogo etc.
 
+import { isVirtualDevice } from '../../shared/audio-labels.js';
+
+// Reexportado: quem escolhe aparelhos na aba Sons importa tudo daqui.
+export { isVirtualDevice };
+
 // Nomes de saídas de cabos virtuais conhecidos.
 const VIRTUAL_OUTPUT = /\bcable\b|virtual|voicemeeter|steam streaming microphone/i;
 
 /** A saída parece ser de um cabo de áudio virtual? */
 export function isVirtualOutput(label) {
   return VIRTUAL_OUTPUT.test(label || '');
-}
-
-// Aparelhos de som virtuais (cabos e os da Steam): não são onde a pessoa ouve nem
-// o microfone dela, então ficam fora das listas de fone e de microfone.
-const VIRTUAL_DEVICE = /\bcable\b|virtual|voicemeeter|steam streaming/i;
-
-/** O aparelho (saída ou entrada) é virtual? */
-export function isVirtualDevice(label) {
-  return VIRTUAL_DEVICE.test(label || '');
 }
 
 /** Aparelhos de verdade de um tipo, sem os virtuais (para "onde você ouve" e microfones). */

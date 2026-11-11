@@ -523,9 +523,6 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .vidpid small { font-size: 11px; }
 .info-card p { margin: 0; }
 .device-detail { min-width: 0; }
-.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0 0 12px; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; }
 
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -994,7 +991,6 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 }
 .swatch-dot { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--border); }
 .swatch.selected .swatch-dot { border-color: var(--accent); }
-.color-input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .slider-row { display: grid; grid-template-columns: 1fr 48px; gap: 10px; align-items: center; }
 .slider-row input { accent-color: var(--accent); width: 100%; }
 /* Configurações: cabeçalho, grupos em duas colunas (uma só em janela estreita) e rodapé. */
@@ -1012,7 +1008,6 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .settings-note { display: block; margin-top: 8px; }
 .settings-group-title { display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .settings-group .segmented { margin-top: 4px; }
-.settings-text { margin: 0 0 12px; }
 .settings-group .row { margin-bottom: 0; }
 .settings-foot { display: flex; justify-content: flex-end; padding: 14px 24px; border-top: 1px solid var(--border); }
 .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }

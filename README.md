@@ -65,8 +65,17 @@ apps disputando o mesmo dispositivo HID causam falhas de leitura.
 - **Electron**. Por padrão, sem módulos nativos e sem DLLs: tudo o que dá para
   fazer com APIs da web e do Electron é feito assim. Veja a exceção em
   [Código nativo](#código-nativo).
-- O processo principal (`src/main/main.cjs`) só cria a janela e libera o
-  acesso HID para a página local.
+- O processo principal (`src/main/`) cria a janela, libera o acesso HID para a
+  página local e faz o que a web não alcança. Um arquivo por assunto:
+  - `main.cjs`: janela, tema, bandeja, iniciar com o Windows e a partida do app;
+  - `settings-store.cjs`: configurações gravadas e idioma em uso;
+  - `permissions.cjs`: o que a página pode usar (HID, microfone, notificações);
+  - `sounds.cjs` e `sound-hotkeys.cjs`: pasta dos sons e atalhos globais;
+  - `mic-effect.cjs` e `audio-devices.cjs`: efeito no microfone e aparelhos de
+    som do Windows, pelos programas de `native/audio-mix`;
+  - `system-info.cjs`: bateria Bluetooth, versão USB e teclados, pelo PowerShell;
+  - `app-updates.cjs` e `updates.cjs`: atualizações;
+  - `preload.cjs`: os pedidos que a página pode fazer (`window.unihub`).
 - A página (`src/renderer/`) usa APIs padrão:
   - **WebHID** para conversar com os dispositivos;
   - **Gamepad API** para o teste de botões.

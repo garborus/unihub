@@ -15,7 +15,7 @@
 
 import { h, button } from '../core/dom.js';
 import { iconCard } from './icon-card.js';
-import { isVirtualDevice } from '../frontend/sons/devices.js';
+import { friendlyLabel, isVirtualDevice } from './audio-labels.js';
 
 const TONE_S = 0.35; // duração de cada nota do teste
 const DEFAULT_MONITOR_VOLUME = 60; // %
@@ -37,11 +37,6 @@ export function pickHeadsetDevices(devices, matches) {
     callOutput: outputs.find(isCall) || output,
     input: real.find((d) => d.kind === 'audioinput') || null,
   };
-}
-
-/** Nome para mostrar, sem o "(VID:PID)" ou "(Bluetooth)" que o Chromium põe no fim. */
-function friendlyLabel(label) {
-  return label.replace(/\s*\(([0-9a-f]{4}:[0-9a-f]{4}|bluetooth)\)\s*$/i, '');
 }
 
 const isBluetooth = (device) => /\(bluetooth\)\s*$/i.test(device?.label || '');

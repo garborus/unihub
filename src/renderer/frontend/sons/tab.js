@@ -13,78 +13,16 @@ import { h, clear, card, button } from '../../core/dom.js';
 import { realDevices, physicalDevices, pickMicOutput, isVirtualOutput, isVirtualDevice } from './devices.js';
 import { EFFECT_RATE, mixToMono, channelsOf } from './mix.js';
 import { acceleratorFromEvent, acceleratorLabel, isTypingKey, hotkeyKeyCount, MAX_HOTKEY_KEYS, STOP_HOTKEY_ID } from './hotkeys.js';
+import { loadPrefs, savePrefs, volumeKey } from './prefs.js';
+import { icons, iconButton } from './icons.js';
+import { createTileReorder } from './reorder.js';
+import { friendlyLabel } from '../../shared/audio-labels.js';
 
-const STORAGE_KEY = 'unihub.sounds';
 const MODES = {
   both: { ear: true, mic: true },
   ear: { ear: true, mic: false },
   mic: { ear: false, mic: true },
 };
-
-// micMode: como o som chega à chamada. 'effect' (padrão) = efeito de áudio do
-// UnusHub no microfone (native/audio-mix); 'cable' = cabo de áudio virtual, para
-// quem não pode instalar o efeito ou usa um app que pega o microfone direto.
-// volumeEar / volumeMic: volume dos sons no fone e no microfone (0 a 100).
-const DEFAULT_PREFS = { listen: '', micOut: '', micIn: '', mixVoice: false, volumeEar: 80, volumeMic: 80, micMode: 'effect', effectMic: '' };
-
-function loadPrefs() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    // Antes havia um volume só: vale para os dois.
-    if (typeof saved.volume === 'number') {
-      saved.volumeEar ??= saved.volume;
-      saved.volumeMic ??= saved.volume;
-      delete saved.volume;
-    }
-    return { ...DEFAULT_PREFS, ...saved };
-  } catch {
-    return { ...DEFAULT_PREFS };
-  }
-}
-
-const volumeKey = (kind) => (kind === 'ear' ? 'volumeEar' : 'volumeMic');
-
-function savePrefs(prefs) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs)); } catch { /* sem armazenamento */ }
-}
-
-// Ícones de traço, no tamanho do texto, na cor do texto.
-const SVG = 'http://www.w3.org/2000/svg';
-function icon(...paths) {
-  return () => {
-    const svg = document.createElementNS(SVG, 'svg');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('class', 'sons-icon');
-    svg.setAttribute('aria-hidden', 'true');
-    for (const d of paths) {
-      const p = document.createElementNS(SVG, 'path');
-      p.setAttribute('d', d);
-      svg.append(p);
-    }
-    return svg;
-  };
-}
-const icons = {
-  play: icon('M8 5.5v13l10.5-6.5z'),
-  stop: icon('M7 7h10v10H7z'),
-  stopAll: icon('M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z', 'M9.5 9.5h5v5h-5z'),
-  plus: icon('M12 5v14M5 12h14'),
-  external: icon('M14 4h6v6M20 4l-8.5 8.5', 'M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5'),
-  folder: icon('M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z'),
-  headphones: icon('M4 15v-3a8 8 0 0 1 16 0v3', 'M4 15a2 2 0 0 1 2-2h1v6H6a2 2 0 0 1-2-2zM20 15a2 2 0 0 0-2-2h-1v6h1a2 2 0 0 0 2-2z'),
-  mic: icon('M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z', 'M6 11.5a6 6 0 0 0 12 0M12 17.5v3'),
-  trash: icon('M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12'),
-  refresh: icon('M19 12a7 7 0 1 1-2.05-4.95M19 5v4h-4'),
-  volume: icon('M4 9.5h3.5L12 6v12l-4.5-3.5H4z', 'M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11'),
-  keyboard: icon('M4 7h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z', 'M7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17.5 10.5h.01M8 14h8'),
-  note: icon('M9 17.5V6l10-2v11.5', 'M9 17.5a2.5 2.5 0 1 1-2.5-2.5A2.5 2.5 0 0 1 9 17.5zM19 15.5a2.5 2.5 0 1 1-2.5-2.5 2.5 2.5 0 0 1 2.5 2.5z'),
-};
-
-function iconButton(draw, label, onclick, disabled = false) {
-  return h('button', { class: 'btn icon-btn sons-icon-btn', title: label, 'aria-label': label, onclick, disabled }, draw());
-}
-
-const friendly = (label) => label.replace(/\s*\(([0-9a-f]{4}:[0-9a-f]{4}|bluetooth)\)\s*$/i, '');
 
 /**
  * Abre um AudioContext preso numa saída ('' = padrão do Windows). Se o
@@ -567,9 +505,8 @@ const plugin = {
 
     // "0:01/0:13": quanto já tocou e quanto o som dura.
     const clockText = () => {
-      const fmt = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
       const elapsed = Math.min((performance.now() - playStart) / 1000, playDuration);
-      return `${fmt(elapsed)}/${fmt(playDuration)}`;
+      return `${durationText(elapsed)}/${durationText(playDuration)}`;
     };
 
     function syncClock() {
@@ -586,7 +523,7 @@ const plugin = {
 
     function render() {
       // Arrastando um cartão: não redesenha (sumiria com o cartão na mão); redesenha ao soltar.
-      if (reorder?.started) return;
+      if (reorder.dragging()) return;
       syncClock();
       if (!api?.listSounds) {
         clear(container, h('div', { class: 'empty' }, 'Esta aba precisa do app instalado.'));
@@ -645,7 +582,7 @@ const plugin = {
         h('div', { class: 'sons-side' },
           card('Onde você escuta',
             h('p', { class: 'muted small' }, 'Os sons tocam aqui para você.'),
-            select(listenId(), [['', 'Saída padrão do Windows'], ...listenOutputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('listen', v))),
+            select(listenId(), [['', 'Saída padrão do Windows'], ...listenOutputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('listen', v))),
           card('Para quem está na chamada',
             useEffect() ? effectSection() : cableSection(outputs, inputs, micOut, virtualFound),
             modeSwitch()),
@@ -682,129 +619,16 @@ const plugin = {
       if (none) none.hidden = !(q && shown === 0);
     }
 
-    // Arrastar um cartão muda a ordem (guardada no app). Arrastar próprio, com o
-    // mouse: o cartão "levanta" e segue o ponteiro, o lugar dele vira um espaço
-    // tracejado e os outros cartões deslizam para abrir espaço. Só começa depois de
-    // mover uns pixels, para os cliques nos botões continuarem funcionando.
-    const DRAG_START_PX = 6;
-    const SLIDE_MS = 200;
-    const EASE = 'cubic-bezier(.2, .8, .2, 1)';
-    const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    let reorder = null; // { tile, pointerId, startX, startY, started, ghost, grid, library, baseX, baseY, original }
-
-    function onTilePointerDown(e) {
-      const tile = e.currentTarget;
-      if (e.button !== 0 || reorder || !tile.classList.contains('can-reorder')) return;
-      reorder = { tile, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, started: false };
-      window.addEventListener('pointermove', onReorderMove);
-      window.addEventListener('pointerup', onReorderEnd);
-      window.addEventListener('pointercancel', onReorderEnd);
-    }
-
-    function beginReorder() {
-      const { tile } = reorder;
-      const library = tile.closest('.sons-library');
-      const lib = library.getBoundingClientRect();
-      const r = tile.getBoundingClientRect();
-      // A cópia fica dentro do cartão "Seus sons" (mesmos estilos), por cima de tudo.
-      const ghost = tile.cloneNode(true);
-      ghost.classList.add('sons-tile-ghost');
-      ghost.removeAttribute('data-id');
-      ghost.setAttribute('aria-hidden', 'true');
-      reorder.baseX = r.left - lib.left - library.clientLeft;
-      reorder.baseY = r.top - lib.top - library.clientTop;
-      ghost.style.left = `${reorder.baseX}px`;
-      ghost.style.top = `${reorder.baseY}px`;
-      ghost.style.width = `${r.width}px`;
-      ghost.style.height = `${r.height}px`;
-      library.append(ghost);
-      tile.classList.add('reorder-placeholder');
-      document.body.classList.add('sons-reordering');
-      Object.assign(reorder, { started: true, ghost, library, grid: tile.parentElement, original: tileIds(tile.parentElement) });
-    }
-
-    const tileIds = (grid) => [...grid.querySelectorAll('.sons-tile[data-id]')].map((t) => t.dataset.id);
-
-    // Cartão sob o ponteiro, pela posição de layout (sem as animações em curso,
-    // para não ficar trocando de lugar enquanto os cartões deslizam).
-    function tileAt(x, y) {
-      const { grid } = reorder;
-      const g = grid.getBoundingClientRect();
-      const px = x - g.left - grid.clientLeft + grid.scrollLeft;
-      const py = y - g.top - grid.clientTop + grid.scrollTop;
-      return [...grid.querySelectorAll('.sons-tile[data-id]')].find((t) => !t.hidden
-        && px >= t.offsetLeft && px <= t.offsetLeft + t.offsetWidth && py >= t.offsetTop && py <= t.offsetTop + t.offsetHeight);
-    }
-
-    // Move o espaço vazio para o lugar do alvo e faz os cartões deslizarem (FLIP).
-    function moveTo(target) {
-      const { grid, tile } = reorder;
-      const tiles = [...grid.querySelectorAll('.sons-tile[data-id]')];
-      const before = new Map(tiles.map((t) => [t, t.getBoundingClientRect()]));
-      if (tiles.indexOf(tile) < tiles.indexOf(target)) target.after(tile); else target.before(tile);
-      if (reducedMotion()) return;
-      for (const t of tiles) {
-        const a = before.get(t);
-        const b = t.getBoundingClientRect();
-        const dx = a.left - b.left;
-        const dy = a.top - b.top;
-        if (dx || dy) t.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: SLIDE_MS, easing: EASE });
-      }
-    }
-
-    function onReorderMove(e) {
-      if (!reorder || e.pointerId !== reorder.pointerId) return;
-      const dx = e.clientX - reorder.startX;
-      const dy = e.clientY - reorder.startY;
-      if (!reorder.started) {
-        if (Math.hypot(dx, dy) < DRAG_START_PX) return;
-        beginReorder();
-      }
-      e.preventDefault();
-      reorder.ghost.style.transform = `translate(${dx}px, ${dy}px) scale(1.04) rotate(1deg)`;
-      // Perto da borda de cima ou de baixo da lista, rola a lista.
-      const g = reorder.grid.getBoundingClientRect();
-      if (e.clientY < g.top + 40) reorder.grid.scrollTop -= 14;
-      else if (e.clientY > g.bottom - 40) reorder.grid.scrollTop += 14;
-      const target = tileAt(e.clientX, e.clientY);
-      if (target && target !== reorder.tile) moveTo(target);
-    }
-
-    function onReorderEnd(e) {
-      if (!reorder || e.pointerId !== reorder.pointerId) return;
-      window.removeEventListener('pointermove', onReorderMove);
-      window.removeEventListener('pointerup', onReorderEnd);
-      window.removeEventListener('pointercancel', onReorderEnd);
-      const r = reorder;
-      if (!r.started) { reorder = null; return; } // foi só um clique
-      // O clique que vem depois de soltar não pode tocar o som.
-      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
-      window.addEventListener('click', swallow, true);
-      setTimeout(() => window.removeEventListener('click', swallow, true), 0);
-      const finish = () => {
-        r.ghost.remove();
-        r.tile.classList.remove('reorder-placeholder');
-        document.body.classList.remove('sons-reordering');
-        const ids = tileIds(r.grid);
-        reorder = null;
-        if (ids.join('\n') !== r.original.join('\n')) {
+    // Arrastar um cartão muda a ordem, que fica guardada no app (ver reorder.js).
+    const reorder = createTileReorder({
+      onFinish(ids, changed) {
+        if (changed) {
           sounds = ids.map((id) => sounds.find((x) => x.id === id)).filter(Boolean);
           api.setSoundOrder?.(ids).catch(() => {});
         }
         render();
-      };
-      if (reducedMotion()) { finish(); return; }
-      // A cópia "pousa" no espaço vazio antes de sumir.
-      const lib = r.library.getBoundingClientRect();
-      const dest = r.tile.getBoundingClientRect();
-      const toX = dest.left - lib.left - r.library.clientLeft - r.baseX;
-      const toY = dest.top - lib.top - r.library.clientTop - r.baseY;
-      const landing = r.ghost.animate(
-        [{ transform: r.ghost.style.transform }, { transform: `translate(${toX}px, ${toY}px) scale(1) rotate(0deg)` }],
-        { duration: 180, easing: EASE, fill: 'forwards' });
-      landing.onfinish = finish;
-      landing.oncancel = finish;
-    }
+      },
+    });
 
     // O "Parar" do topo só aparece quando o cartão do som que está tocando saiu de
     // vista (rolado para fora da lista); com o cartão à vista, o quadrado nele basta.
@@ -871,7 +695,7 @@ const plugin = {
     function soundTile(s, canMic) {
       const isPlaying = playingId === s.id;
       const main = canMic ? 'both' : 'ear';
-      return h('div', { class: 'sons-tile can-reorder' + (isPlaying ? ' playing' : ''), 'data-id': s.id, onpointerdown: onTilePointerDown },
+      return h('div', { class: 'sons-tile can-reorder' + (isPlaying ? ' playing' : ''), 'data-id': s.id, onpointerdown: reorder.onTilePointerDown },
         h('button', {
           class: 'sons-play',
           title: isPlaying ? 'Parar' : (canMic ? 'Tocar no fone e no microfone' : 'Tocar no fone'),
@@ -949,14 +773,14 @@ const plugin = {
       return [
         h('p', { class: 'muted small' }, 'Para quem está na chamada ouvir os sons, o UnusHub toca na saída de um cabo de áudio virtual. No Discord, no jogo ou no app de chamada, escolha a entrada desse cabo como microfone.'),
         virtualFound ? null : h('p', { class: 'small' }, 'Nenhum cabo de áudio virtual encontrado. Instale um (por exemplo, VB-CABLE) e ele aparece aqui.'),
-        select(micOut?.deviceId || '', [['', 'Escolha a saída do cabo virtual'], ...outputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('micOut', v)),
+        select(micOut?.deviceId || '', [['', 'Escolha a saída do cabo virtual'], ...outputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('micOut', v)),
         h('label', { class: 'setting-row' },
           h('span', { class: 'setting-text' },
             h('span', {}, 'Misturar minha voz'),
             h('small', { class: 'muted' }, 'Manda também o seu microfone para o cabo, para falar e tocar sons pelo mesmo microfone.')),
           h('input', { type: 'checkbox', class: 'switch', checked: prefs.mixVoice, onchange: (e) => setPref('mixVoice', e.target.checked) })),
         prefs.mixVoice
-          ? select(prefs.micIn, [['', 'Microfone padrão do Windows'], ...inputs.map((d) => [d.deviceId, friendly(d.label)])], (v) => setPref('micIn', v))
+          ? select(prefs.micIn, [['', 'Microfone padrão do Windows'], ...inputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('micIn', v))
           : null,
       ];
     }
