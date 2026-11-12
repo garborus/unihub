@@ -1,4 +1,4 @@
-// Aba "Sons": guarda áudios e toca cada um no fone, no microfone ou nos dois.
+// Aba "Soundboard" (antes "Sons"): guarda áudios e toca cada um no fone, no microfone ou nos dois.
 //
 // No fone: Web Audio na saída escolhida (ou na padrão do Windows).
 // No microfone, de dois jeitos:
@@ -50,7 +50,7 @@ let backgroundTab = null;
 let autoInstallEffect = false;
 
 // Atalho que para todos os sons (gravado e guardado como os atalhos dos sons).
-const STOP_ENTRY = { id: STOP_HOTKEY_ID, name: 'Parar todos os sons' };
+const STOP_ENTRY = { id: STOP_HOTKEY_ID, name: 'Parar todos os áudios' };
 
 // Tempo em m:ss (ex.: 0:01, 3:18), sem arredondar para cima: é o quanto já tocou.
 const durationText = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -64,8 +64,8 @@ window.unihub?.onSoundHotkey?.((id) => {
 });
 
 const plugin = {
-  id: 'sounds',
-  name: 'Sons',
+  id: 'sounds', // o id fica: é o que o app guarda para saber que a aba está ativa
+  name: 'Soundboard', // mesmo nome em todos os idiomas (até 0.1.8 se chamava "Sons")
   tagline: 'Guarde áudios e toque no fone ou no microfone, para quem está na chamada ouvir',
   status: 'beta',
   kind: 'feature', // recurso do app: não depende de um aparelho conectado
@@ -233,7 +233,7 @@ const plugin = {
       const result = kind === 'install' ? await api.micEffectInstall(mic) : await api.micEffectRemove();
       effect.busy = '';
       message = result.cancelled ? 'Pedido de administrador recusado; nada mudou.'
-        : result.ok ? (kind === 'install' ? 'Efeito instalado.' : 'Efeito removido.')
+        : result.ok ? (kind === 'install' ? 'Ativado no microfone.' : 'Removido do microfone.')
           : `Não deu certo: ${result.message || 'erro desconhecido'}`;
       await refreshEffect();
     }
@@ -425,7 +425,7 @@ const plugin = {
       const label = acceleratorLabel(accelerator);
       if (result.error === 'em uso') message = `O atalho ${label} já é usado por outro app. Escolha outro.`;
       else if (result.error) message = `Não foi possível usar o atalho ${label}.`;
-      else if (isTypingKey(accelerator)) message = `Atenção: enquanto o UnusHub estiver aberto, a tecla ${label} ${id === STOP_HOTKEY_ID ? 'para os sons' : `toca ${sound?.name}`} em qualquer app e deixa de digitar. Para evitar isso, use com Ctrl, Alt ou Shift.`;
+      else if (isTypingKey(accelerator)) message = `Atenção: enquanto o UnusHub estiver aberto, a tecla ${label} ${id === STOP_HOTKEY_ID ? 'para os áudios' : `toca ${sound?.name}`} em qualquer app e deixa de digitar. Para evitar isso, use com Ctrl, Alt ou Shift.`;
       else message = '';
       render();
     }
@@ -565,39 +565,37 @@ const plugin = {
             // Um File por vez pela ponte (uma FileList inteira não atravessa).
             const paths = [...e.dataTransfer.files].map((f) => api.pathForFile?.(f)).filter(Boolean);
             if (paths.length && api.addSoundPaths) refreshSounds(api.addSoundPaths(paths));
-            else setMessage('Não foi possível ler os arquivos soltos. Use "Adicionar sons".');
+            else setMessage('Não foi possível ler os arquivos soltos. Use "Adicionar áudios".');
           },
         },
-          h('div', { class: 'sons-drop-hint', 'aria-hidden': 'true' }, icons.plus(), 'Solte para adicionar os sons'),
+          h('div', { class: 'sons-drop-hint', 'aria-hidden': 'true' }, icons.plus(), 'Solte para adicionar os áudios'),
           h('div', { class: 'sons-head' },
             h('div', {},
-              h('h3', {}, 'Seus sons'),
-              h('span', { class: 'muted small' }, sounds.length === 1 ? '1 som' : `${sounds.length} sons`),
+              h('h3', {}, 'Seus áudios'),
+              h('span', { class: 'muted small' }, sounds.length === 1 ? '1 áudio' : `${sounds.length} áudios`),
               // O que cada botão do cartão faz (os de baixo são só ícones).
               sounds.length
-                ? h('p', { class: 'muted small sons-howto' }, 'O ▶ toca no fone e no microfone ao mesmo tempo. Embaixo de cada som: tocar só no fone, só no microfone, definir um atalho de teclado e apagar.')
-                : null,
-              sounds.length
-                ? h('p', { class: 'muted small sons-howto' }, 'Arraste arquivos de áudio para cá para adicionar, ou arraste um som para mudar a ordem.')
+                ? h('p', { class: 'muted small sons-howto' }, '▶ toca no fone e no microfone. Os botões abaixo tocam só no fone ou só no microfone, definem um atalho ou apagam o áudio. Para mudar a ordem, arraste um áudio.')
                 : null),
             h('div', { class: 'sons-head-actions' },
               sounds.length >= 2 ? searchBox() : null,
               playingId ? h('button', { class: 'btn sons-stop-top', hidden: true, onclick: stopAll }, 'Parar') : null)),
           message ? h('p', { class: 'sons-message small', role: 'status' }, message) : null,
-          h('p', { class: 'muted small sons-no-match', hidden: true }, 'Nenhum som com esse nome.'),
+          h('p', { class: 'muted small sons-no-match', hidden: true }, 'Nenhum áudio com esse nome.'),
           sounds.length === 0
             ? h('div', { class: 'empty sons-empty' },
               h('span', { class: 'sons-empty-icon', 'aria-hidden': 'true' }, icons.note()),
-              h('p', {}, 'Nenhum som ainda'),
+              h('p', {}, 'Nenhum áudio ainda'),
               h('p', { class: 'small' }, 'Adicione arquivos MP3, WAV, OGG, M4A ou FLAC, ou arraste os arquivos para cá.'),
-              button('Adicionar sons', () => refreshSounds(api.addSounds()), { kind: 'primary' }))
+              button('Adicionar áudios', () => refreshSounds(api.addSounds()), { kind: 'primary' }))
             : h('div', { class: 'sons-grid' }, sounds.map((s) => soundTile(s, canMic)),
               h('button', { class: 'sons-tile sons-tile-add', onclick: () => refreshSounds(api.addSounds()) },
-                h('span', { class: 'sons-tile-add-icon', 'aria-hidden': 'true' }, icons.plus()), 'Adicionar sons')),
+                h('span', { class: 'sons-tile-add-icon', 'aria-hidden': 'true' }, icons.plus()),
+                h('span', {}, 'Adicionar áudios'),
+                h('span', { class: 'sons-tile-add-hint' }, 'ou arraste áudios até aqui'))),
           h('div', { class: 'sons-footer' }, volumeRow(), stopHotkeyRow())),
         h('div', { class: 'sons-side' },
           card('Onde você escuta',
-            h('p', { class: 'muted small' }, 'Os sons tocam aqui para você.'),
             select(listenId(), [['', 'Saída padrão do Windows'], ...listenOutputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('listen', v))),
           card('Para quem está na chamada',
             useEffect() ? effectSection() : cableSection(outputs, inputs, micOut, virtualFound),
@@ -616,7 +614,7 @@ const plugin = {
     // A busca só esconde cartões (sem redesenhar a aba, para o campo não perder o foco).
     function searchBox() {
       return h('input', {
-        type: 'search', class: 'sons-search', placeholder: 'Buscar', value: query, 'aria-label': 'Buscar sons',
+        type: 'search', class: 'sons-search', placeholder: 'Buscar', value: query, 'aria-label': 'Buscar áudios',
         oninput: (e) => { query = e.target.value; applyFilter(); },
       });
     }
@@ -668,12 +666,12 @@ const plugin = {
       const openFolder = async () => {
         // openPath devolve '' quando abre, ou o motivo de não ter aberto.
         const error = await api.openSoundsFolder();
-        if (error) setMessage(`Não foi possível abrir a pasta dos sons: ${error}`);
+        if (error) setMessage(`Não foi possível abrir a pasta dos áudios: ${error}`);
       };
       // Cartão na coluna da direita, embaixo de "Para quem está na chamada".
       return h('section', { class: 'card sons-folder' },
         h('div', { class: 'sons-folder-head' },
-          h('h3', {}, 'Onde os sons ficam salvos'),
+          h('h3', {}, 'Pasta dos áudios'),
           h('span', { class: 'sons-folder-tag' + (folder?.custom ? ' custom' : '') }, folder?.custom ? 'Escolhida por você' : 'Padrão')),
         h('div', { class: 'sons-folder-row' },
           h('button', {
@@ -688,7 +686,7 @@ const plugin = {
           h('span', { class: 'sons-folder-open', 'aria-hidden': 'true' }, icons.external())),
           button(folderBusy ? 'Trocando…' : 'Trocar pasta…', () => changeFolder(api.chooseSoundsFolder), { kind: 'secondary', disabled: folderBusy })),
         h('p', { class: 'muted small sons-folder-hint' },
-          'Clique no caminho para abrir a pasta. Os sons que você adiciona são copiados para lá.',
+          'Os áudios adicionados são copiados para esta pasta. Clique no caminho para abri-la.',
           folder?.custom
             ? h('button', { class: 'link-btn', disabled: folderBusy, onclick: () => changeFolder(api.resetSoundsFolder) }, 'Voltar para a pasta padrão')
             : null));
@@ -754,9 +752,9 @@ const plugin = {
           out);
       };
       return h('div', { class: 'sons-volume' },
-        slider('ear', icons.headphones, 'No fone'),
-        slider('mic', icons.mic, 'No microfone'),
-        h('p', { class: 'muted small sons-volume-hint' }, 'Volume só dos sons: no fone é o que você ouve, no microfone é o que chega para quem está na chamada. Sua voz não muda.'));
+        slider('ear', icons.headphones, 'No seu fone'),
+        slider('mic', icons.mic, 'Na chamada'),
+        h('p', { class: 'muted small sons-volume-hint' }, 'Muda só o volume dos áudios. Sua voz continua igual.'));
     }
 
     // Atalho global que para qualquer som tocando, mesmo com o UnusHub minimizado.
@@ -764,8 +762,8 @@ const plugin = {
       return h('div', { class: 'sons-stop-hotkey' },
         h('span', { class: 'sons-volume-icon', 'aria-hidden': 'true' }, icons.stopAll()),
         h('span', { class: 'setting-text' },
-          h('span', { class: 'small' }, 'Parar todos os sons'),
-          h('small', { class: 'muted' }, 'Atalho que corta qualquer som tocando, mesmo com o UnusHub minimizado.')),
+          h('span', { class: 'small' }, 'Parar todos os áudios'),
+          h('small', { class: 'muted' }, 'Funciona mesmo com o UnusHub minimizado.')),
         hotkeyButton(STOP_ENTRY));
     }
 
@@ -789,13 +787,13 @@ const plugin = {
 
     function cableSection(outputs, inputs, micOut, virtualFound) {
       return [
-        h('p', { class: 'muted small' }, 'Para quem está na chamada ouvir os sons, o UnusHub toca na saída de um cabo de áudio virtual. No Discord, no jogo ou no app de chamada, escolha a entrada desse cabo como microfone.'),
+        h('p', { class: 'muted small' }, 'Para quem está na chamada ouvir os áudios, o UnusHub toca na saída de um cabo de áudio virtual. No Discord, no jogo ou no app de chamada, escolha a entrada desse cabo como microfone.'),
         virtualFound ? null : h('p', { class: 'small' }, 'Nenhum cabo de áudio virtual encontrado. Instale um (por exemplo, VB-CABLE) e ele aparece aqui.'),
         select(micOut?.deviceId || '', [['', 'Escolha a saída do cabo virtual'], ...outputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('micOut', v)),
         h('label', { class: 'setting-row' },
           h('span', { class: 'setting-text' },
             h('span', {}, 'Misturar minha voz'),
-            h('small', { class: 'muted' }, 'Manda também o seu microfone para o cabo, para falar e tocar sons pelo mesmo microfone.')),
+            h('small', { class: 'muted' }, 'Manda também o seu microfone para o cabo, para falar e tocar áudios pelo mesmo microfone.')),
           h('input', { type: 'checkbox', class: 'switch', checked: prefs.mixVoice, onchange: (e) => setPref('mixVoice', e.target.checked) })),
         prefs.mixVoice
           ? select(prefs.micIn, [['', 'Microfone padrão do Windows'], ...inputs.map((d) => [d.deviceId, friendlyLabel(d.label)])], (v) => setPref('micIn', v))
@@ -807,7 +805,7 @@ const plugin = {
     const statusBadge = (kind, text) => h('span', { class: `sons-status ${kind}` }, h('span', { class: 'sons-dot', 'aria-hidden': 'true' }), text);
 
     function effectSection() {
-      const intro = h('p', { class: 'muted small' }, 'Soma os sons ao seu microfone de verdade, sem cabo virtual: em jogos, gravadores e chamadas (Discord, Teams, WhatsApp). Não funciona em apps que usam o microfone em modo exclusivo.');
+      const intro = h('p', { class: 'muted small' }, 'Os áudios entram no seu microfone junto com a sua voz e funcionam no Discord, no Teams, no WhatsApp, em jogos e em gravadores.');
       if (!effect.loaded) {
         return [statusBadge('wait', 'Procurando microfones…'), intro];
       }
@@ -822,7 +820,7 @@ const plugin = {
         // instalando de novo por cima (pede administrador e reinicia o som do Windows).
         const fix = installed.bluetooth ? null
           : !installed.calls ? { text: 'Esta instalação ainda não funciona em chamadas. Atualize para ligar (pede administrador e reinicia o som do Windows).', label: 'Atualizar para chamadas' }
-            : installed.enhancementsOff ? { text: 'As melhorias de áudio do Windows estão desligadas neste microfone, e sem elas o efeito não roda. Ligue para os sons chegarem (pede administrador e reinicia o som do Windows).', label: 'Ligar melhorias de áudio' }
+            : installed.enhancementsOff ? { text: 'As melhorias de áudio do Windows estão desligadas neste microfone, e sem elas o efeito não roda. Ligue para os áudios chegarem (pede administrador e reinicia o som do Windows).', label: 'Ligar melhorias de áudio' }
               // Efeito de uma versão anterior do app: instalar de novo troca a DLL pela nova.
               : effect.outdated ? { text: 'Há uma versão nova do efeito. Atualize para usar (pede administrador e reinicia o som do Windows).', label: 'Atualizar efeito' }
                 : null;
@@ -836,12 +834,12 @@ const plugin = {
             h('span', {}, h('strong', {}, installed.name), h('span', { class: 'muted small' }, installed.device))),
           intro,
           // Apps de chamada tratam música e efeitos como ruído e cortam pedaços.
-          installed.bluetooth ? null : h('p', { class: 'muted small' }, 'Se o som chegar cortado ou chiando na chamada, desligue a supressão de ruído e o cancelamento de eco no app de chamada (no Discord, em Voz e Vídeo).'),
+          installed.bluetooth ? null : h('p', { class: 'muted small' }, 'O som chega cortado ou chiando? Desligue a supressão de ruído e o cancelamento de eco no app da chamada (no Discord, em Voz e Vídeo).'),
           installed.bluetooth ? cableWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chega na chamada. Remova o efeito e use o fone pelo cabo ou pelo dongle, ou um cabo virtual.') : null,
           fix ? h('p', { class: 'small' }, fix.text) : null,
           h('div', { class: 'sons-foot' },
             fix ? button(effect.busy === 'install' ? 'Atualizando…' : fix.label, () => effectAction('install', installed.id), { kind: 'primary', disabled: busy }) : null,
-            button('Remover efeito', () => effectAction('remove'), { disabled: busy })),
+            button('Remover do microfone', () => effectAction('remove'), { disabled: busy })),
         ];
       }
       // Windows em ARM: o serviço de áudio não carrega a DLL do efeito (x64).
@@ -861,9 +859,9 @@ const plugin = {
           : select(chosen.id, mics.map((m) => [m.id, `${m.name} (${m.device})${m.bluetooth ? ' · Bluetooth' : ''}`]), (v) => setPref('effectMic', v)),
         chosen?.bluetooth
           ? cableWarning('Este microfone é de um fone Bluetooth, e nele o Windows não roda efeitos: o som não chegaria na chamada. Ligue o fone pelo cabo ou pelo dongle e escolha esse microfone, ou use um cabo virtual.')
-          : h('p', { class: 'muted small' }, 'A instalação pede permissão de administrador, guarda os efeitos atuais do microfone e reinicia o som do Windows. "Remover efeito" volta tudo como estava.'),
+          : h('p', { class: 'muted small' }, 'Pede permissão de administrador e reinicia o som do Windows por alguns segundos. Dá para desfazer depois.'),
         h('div', { class: 'sons-foot' },
-          button(busy ? 'Instalando…' : 'Instalar efeito', () => effectAction('install'), { kind: 'primary', disabled: busy || !chosen || chosen.bluetooth })),
+          button(busy ? 'Ativando…' : 'Ativar no microfone', () => effectAction('install'), { kind: 'primary', disabled: busy || !chosen || chosen.bluetooth })),
       ];
     }
 

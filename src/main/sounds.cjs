@@ -101,7 +101,7 @@ const sameFolder = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).t
 
 // Textos das janelas do Windows da pasta dos sons, que ficam fora da página.
 const FOLDER_TEXT = {
-  pt: { title: 'Escolher a pasta dos sons', ask: (n) => (n === 1 ? 'Mover o som para a nova pasta?' : `Mover os ${n} sons para a nova pasta?`), detail: 'Se deixar, eles ficam na pasta antiga e só voltam a aparecer na aba quando você escolher essa pasta de novo.', move: 'Mover', keep: 'Deixar onde estão', cancel: 'Cancelar' },
+  pt: { title: 'Escolher a pasta dos áudios', ask: (n) => (n === 1 ? 'Mover o áudio para a nova pasta?' : `Mover os ${n} áudios para a nova pasta?`), detail: 'Se deixar, eles ficam na pasta antiga e só voltam a aparecer na aba quando você escolher essa pasta de novo.', move: 'Mover', keep: 'Deixar onde estão', cancel: 'Cancelar' },
   en: { title: 'Choose the sounds folder', ask: (n) => (n === 1 ? 'Move the sound to the new folder?' : `Move the ${n} sounds to the new folder?`), detail: 'If you leave them, they stay in the old folder and only show in the tab again when you pick that folder again.', move: 'Move', keep: 'Leave them', cancel: 'Cancel' },
   es: { title: 'Elegir la carpeta de sonidos', ask: (n) => (n === 1 ? '¿Mover el sonido a la nueva carpeta?' : `¿Mover los ${n} sonidos a la nueva carpeta?`), detail: 'Si los dejas, se quedan en la carpeta anterior y solo vuelven a aparecer en la pestaña cuando elijas esa carpeta otra vez.', move: 'Mover', keep: 'Dejarlos', cancel: 'Cancelar' },
 };
@@ -234,7 +234,7 @@ function register(ctx) {
 
   ipcMain.handle('sounds:add', async () => {
     const result = await dialog.showOpenDialog(getWindow(), {
-      title: 'Adicionar sons',
+      title: 'Adicionar áudios',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Áudio', extensions: SOUND_EXTENSIONS }],
     });

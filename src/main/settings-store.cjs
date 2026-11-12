@@ -9,8 +9,15 @@ const path = require('node:path');
 // menuPosition: cabeçalho em cima ('top') ou menu à esquerda ('left');
 // menuPinned: com o menu à esquerda, fica aberto (true) ou recolhido (false);
 // theme: cores do app (botão Temas).
-const DEFAULT_SETTINGS = { autoStart: false, tray: false, menuPosition: 'top', menuPinned: true, theme: 'graphite', language: 'auto' };
-const ALLOWED_VALUES = { menuPosition: ['top', 'left'], theme: ['light', 'dark', 'graphite', 'purple', 'lilac'], language: ['auto', 'pt', 'en', 'es'] };
+// Atualizações (o app sempre procura ao abrir): updateAutoDownload baixa sozinho
+// e instala ao fechar; updateNotify mostra a janela de versão nova.
+const DEFAULT_SETTINGS = {
+  autoStart: false, tray: false, menuPosition: 'top', menuPinned: true, theme: 'graphite', language: 'auto',
+  updateAutoDownload: false, updateNotify: true,
+};
+const ALLOWED_VALUES = {
+  menuPosition: ['top', 'left'], theme: ['light', 'dark', 'graphite', 'purple', 'lilac'], language: ['auto', 'pt', 'en', 'es'],
+};
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 

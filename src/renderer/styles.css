@@ -1004,15 +1004,31 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 }
 @media (max-width: 760px) { .settings-body { grid-template-columns: 1fr; } }
 .settings-col { display: flex; flex-direction: column; gap: 16px; }
-.settings-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px 14px; }
+.settings-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px 12px; background: color-mix(in srgb, var(--panel-2) 35%, transparent); }
 .settings-note { display: block; margin-top: 8px; }
-.settings-group-title { display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+/* Título do grupo: ícone pequeno + nome em maiúsculas. */
+.settings-group-title { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.settings-group-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+.settings-group-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Uma linha fina entre as opções do mesmo grupo. */
+.settings-group .setting-row + .setting-row { border-top: 1px solid var(--border); }
+/* Opção com os botões embaixo do texto (ex.: posição do menu). */
+.setting-row.setting-row-stack { flex-direction: column; align-items: stretch; gap: 10px; cursor: default; }
+.setting-row.setting-row-stack .segmented { margin-top: 0; align-self: flex-start; }
 .settings-group .segmented { margin-top: 4px; }
-.settings-group-hint { display: block; margin: -2px 0 10px; }
 .settings-select { width: 100%; margin-top: 4px; }
+/* Idioma: sem o ✓; o escolhido fica com a faixa preenchida na cor de destaque. */
+.settings-select::picker(select) { padding: 4px; }
+.settings-select option::checkmark { display: none; }
+.settings-select option:checked, .settings-select option:checked:hover { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 .update-settings-text { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 10px; }
 .update-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .update-settings-actions .update-progress-block { flex-basis: 100%; }
+/* Opções de atualização, embaixo da versão e dos botões. */
+.update-options { margin-top: 14px; padding-top: 6px; border-top: 1px solid var(--border); }
+.update-options .setting-row .settings-select { width: auto; min-width: 150px; flex-shrink: 0; margin-top: 0; }
+.update-version-row { border-top: 1px solid var(--border); }
+.update-version-row .update-settings-actions { justify-content: flex-end; padding-bottom: 4px; }
 .settings-group .row { margin-bottom: 0; }
 .settings-foot { display: flex; justify-content: flex-end; padding: 14px 24px; border-top: 1px solid var(--border); }
 .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
@@ -1229,6 +1245,7 @@ body.sons-reordering, body.sons-reordering * { cursor: grabbing !important; }
 .sons-mic-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); color: var(--accent); }
 .sons-tile-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 120px; border: 1px dashed var(--border); background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .sons-tile-add:hover { border-color: var(--accent); color: var(--accent); }
+.sons-tile-add-hint { font-size: 12px; opacity: .75; }
 .sons-tile-add-icon { display: flex; width: 36px; height: 36px; border-radius: 50%; align-items: center; justify-content: center; background: var(--panel-2); }
 .sons-folder { display: flex; flex-direction: column; gap: 10px; }
 .sons-folder-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

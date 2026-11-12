@@ -11,7 +11,8 @@ import { Extensions } from './core/extensions.js';
 import { plugins } from './frontend/index.js';
 import { batteryLevel } from './shared/battery.js';
 import { LANGUAGES, DEFAULT_LANGUAGE, getLanguage, setLanguage, startTranslating, translate } from './core/i18n.js';
-import { checkForUpdates, mountUpdateBanner, updateSettingsRows } from './shared/updates.js';
+import { checkOnStartup, mountUpdateBanner, setUpdatePrefs, updateSettingsRows } from './shared/updates.js';
+import { strokeIcon } from './shared/icon-card.js';
 
 const STATUS_LABEL = { beta: 'beta', planned: 'em breve', tool: 'ferramenta' };
 
@@ -584,9 +585,16 @@ function settingToggle(key, settings, onSaved) {
 }
 
 // Layout: cabeçalho, grupos em duas colunas e rodapé com o botão de fechar.
-function settingsGroup(title, ...rows) {
-  return h('section', { class: 'settings-group' }, h('small', { class: 'settings-group-title muted' }, title), ...rows);
+// Cada grupo tem um ícone pequeno ao lado do título.
+function settingsGroup(title, icon, ...rows) {
+  return h('section', { class: 'settings-group' },
+    h('small', { class: 'settings-group-title muted' },
+      h('span', { class: 'settings-group-icon' }, strokeIcon(icon)), h('span', {}, title)),
+    ...rows);
 }
+
+const settingText = (title, hint) => h('span', { class: 'setting-text' },
+  h('span', {}, title), h('small', { class: 'muted' }, hint));
 
 /**
  * Idioma numa lista: "Automático" (segue o Windows, o padrão de quem instala)
@@ -604,7 +612,9 @@ function languageSelect(settings, redraw) {
       applyLanguage(await saveSetting('language', id) || { ...settings, language: id });
       redraw(await window.unihub?.getSettings?.() || settings);
     },
-  }, options.map(({ id, name }) => h('option', { value: id, selected: id === current, translate: id === 'auto' ? null : 'no' }, name)));
+  },
+  // Na lista aberta, o escolhido aparece com a faixa preenchida (estilo em styles.css).
+  options.map(({ id, name }) => h('option', { value: id, selected: id === current, translate: id === 'auto' ? null : 'no' }, name)));
 }
 
 function renderSettings(settings) {
@@ -613,46 +623,40 @@ function renderSettings(settings) {
     h('div', { class: 'settings-head' },
       h('h2', {}, 'Configurações')),
     h('div', { class: 'settings-body' },
-      // Esquerda: o app em si (abrir, ficar aberto, atualizar).
+      // Esquerda: como o app abre e o menu (posição e abas).
+      // Direita: Atualizações (o grupo mais alto) e Idioma.
       h('div', { class: 'settings-col' },
-        settingsGroup('Inicialização',
+        settingsGroup('Inicialização', 'power',
           h('label', { class: 'setting-row' },
-            h('span', { class: 'setting-text' },
-              h('span', {}, 'Iniciar com o Windows'),
-              h('small', { class: 'muted' }, 'O UnusHub abre sozinho quando você liga o computador.')),
+            settingText('Iniciar com o Windows', 'O UnusHub abre sozinho quando você liga o computador.'),
             settingToggle('autoStart', settings, redraw)),
           h('label', { class: 'setting-row' },
-            h('span', { class: 'setting-text' },
-              h('span', {}, 'Continuar aberto na bandeja'),
-              h('small', { class: 'muted' }, settings.autoStart
-                ? 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos sons continuam funcionando. Ao ligar o computador, já abre só no ícone.'
-                : 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos sons continuam funcionando.')),
+            settingText('Continuar aberto na bandeja', settings.autoStart
+              ? 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos áudios continuam funcionando. Ao ligar o computador, já abre só no ícone.'
+              : 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos áudios continuam funcionando.'),
             settingToggle('tray', settings, redraw))),
-        settingsGroup('Atualizações', updateSettingsRows())),
-      // Direita: aparência (onde fica o menu, idioma e quais abas aparecem).
-      h('div', { class: 'settings-col' },
-        settingsGroup('Posição do menu',
-          h('small', { class: 'muted settings-group-hint' }, 'Onde ficam as abas: em cima da janela ou na lateral.'),
-          h('div', { class: 'segmented', role: 'group', 'aria-label': 'Posição do menu' },
-            [['top', 'Cabeçalho'], ['left', 'Barra lateral']].map(([value, text]) => h('button', {
-              class: 'btn' + (settings.menuPosition === value ? ' primary' : ' secondary'),
-              'aria-pressed': String(settings.menuPosition === value),
-              onclick: async () => redraw(applyMenuLayout(await saveSetting('menuPosition', value) || settings)),
-            }, text)))),
-        settingsGroup('Idioma', languageSelect(settings, redraw),
-          (settings.language || DEFAULT_LANGUAGE) === 'auto'
-            ? h('small', { class: 'muted settings-note' }, `Seguindo o idioma do Windows: ${languageName(settings.systemLanguage)}.`)
-            : null),
-        // Abre a janela Abas.
-        settingsGroup('Abas',
+        settingsGroup('Menu', 'layout',
+          h('div', { class: 'setting-row setting-row-stack' },
+            settingText('Posição', 'Onde ficam as abas: em cima da janela ou na lateral.'),
+            h('div', { class: 'segmented', role: 'group', 'aria-label': 'Posição do menu' },
+              [['top', 'Cabeçalho'], ['left', 'Barra lateral']].map(([value, text]) => h('button', {
+                class: 'btn' + (settings.menuPosition === value ? ' primary' : ' secondary'),
+                'aria-pressed': String(settings.menuPosition === value),
+                onclick: async () => redraw(applyMenuLayout(await saveSetting('menuPosition', value) || settings)),
+              }, text)))),
+          // Abre a janela Abas.
           h('div', { class: 'setting-row' },
-            h('span', { class: 'setting-text' },
-              h('span', {}, 'Abas do menu'),
-              h('small', { class: 'muted' }, 'Escolha os tipos de aparelho que aparecem no menu, como Gamepads, Headsets e Teclados.')),
+            settingText('Abas do menu', 'Escolha os tipos de aparelho que aparecem no menu, como Gamepads, Headsets e Teclados.'),
             button('Gerenciar abas', () => {
               settingsDialog.close();
               openDialogFromSettings();
-            }))))),
+            })))),
+      h('div', { class: 'settings-col' },
+        settingsGroup('Atualizações', 'download', updateSettingsRows()),
+        settingsGroup('Idioma', 'globe', languageSelect(settings, redraw),
+          (settings.language || DEFAULT_LANGUAGE) === 'auto'
+            ? h('small', { class: 'muted settings-note' }, `Seguindo o idioma do Windows: ${languageName(settings.systemLanguage)}.`)
+            : null))),
     h('div', { class: 'settings-foot' },
       button('Fechar', () => settingsDialog.close())));
 }
@@ -808,6 +812,10 @@ document.getElementById('settings-btn').addEventListener('click', openSettings);
 show('overview');
 hid.start().catch((err) => toast(`Erro ao listar dispositivos: ${err.message}`, 'error'));
 
-// Versão nova (0.x portátil): procura uma vez, depois que o app abriu.
+// Versão nova: procura uma vez depois que o app abriu (se a pessoa deixou no
+// automático; as preferências ficam em Configurações › Atualizações).
 mountUpdateBanner(document.body);
-setTimeout(() => checkForUpdates().catch(() => {}), 3000);
+setTimeout(async () => {
+  setUpdatePrefs(await window.unihub?.getSettings?.().catch(() => null));
+  checkOnStartup().catch(() => {});
+}, 3000);

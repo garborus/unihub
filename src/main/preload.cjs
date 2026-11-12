@@ -65,7 +65,8 @@ contextBridge.exposeInMainWorld('unihub', {
   micEffectStop: () => ipcRenderer.invoke('mic-effect:stop'),
   /** Atualizações (0.x portátil): { current, latest, newer, canInstall, downloaded, error }. */
   checkUpdate: () => ipcRenderer.invoke('update:check'),
-  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  /** Baixa a versão mais nova, ou `version` (uma escolhida, mesmo mais antiga; só no app instalado). */
+  downloadUpdate: (version) => ipcRenderer.invoke('update:download', version ?? null),
   installUpdate: () => ipcRenderer.invoke('update:install'),
   openUpdatePage: (url) => ipcRenderer.invoke('update:open-page', url),
   onUpdateProgress: (callback) => ipcRenderer.on('update:progress', (_event, p) => callback(p)),

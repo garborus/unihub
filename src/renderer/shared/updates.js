@@ -15,13 +15,31 @@ const state = {
   received: 0, // bytes já baixados da versão nova
   total: 0, // tamanho do download (0 = ainda não se sabe)
   message: '',
+  target: null, // versão escolhida nas Configurações (ex.: uma mais antiga); null = a mais nova
+  auto: false, // download começado sozinho ("Baixar e instalar sozinho")
 };
 const listeners = new Set();
 const changed = () => listeners.forEach((fn) => fn());
 
+// Preferências das Configurações (guardadas no settings.json pelo processo principal).
+const prefs = { updateAutoDownload: false, updateNotify: true };
+export function setUpdatePrefs(settings) {
+  for (const key of Object.keys(prefs)) if (settings && key in settings) prefs[key] = settings[key];
+  changed();
+}
+
+/** Ao abrir o app: procura sempre (uma vez). */
+export async function checkOnStartup() {
+  await checkForUpdates();
+  // "Baixar e instalar sozinho": já baixa; instala quando o app fechar.
+  if (prefs.updateAutoDownload && state.phase === 'ready' && state.info?.newer && state.info.canInstall) {
+    download(null, { auto: true });
+  }
+}
+
 export async function checkForUpdates() {
   const api = window.unihub;
-  if (!api?.checkUpdate) return;
+  if (!api?.checkUpdate || state.phase === 'downloading') return;
   state.phase = 'checking';
   state.message = '';
   changed();
@@ -30,14 +48,18 @@ export async function checkForUpdates() {
   changed();
 }
 
-async function download() {
+async function download(version = null, { auto = false } = {}) {
   state.phase = 'downloading';
+  state.target = version;
+  state.auto = auto;
   state.received = 0;
-  state.total = state.info?.size || 0;
+  state.total = version ? 0 : state.info?.size || 0;
+  state.message = '';
   changed();
-  const result = await window.unihub.downloadUpdate();
+  const result = await window.unihub.downloadUpdate(version);
   state.phase = result.ok ? 'downloaded' : 'ready';
   state.message = result.ok ? '' : result.message;
+  if (!result.ok) state.target = null;
   changed();
 }
 
@@ -88,10 +110,11 @@ function actions() {
   const info = state.info;
   if (state.phase === 'downloading') return progressView();
   if (state.phase === 'downloaded') {
-    return button('Reiniciar e atualizar', () => window.unihub.installUpdate(), { kind: 'primary' });
+    return button(state.target ? `Reiniciar e instalar a ${state.target}` : 'Reiniciar e atualizar',
+      () => window.unihub.installUpdate(), { kind: 'primary' });
   }
   return info.canInstall
-    ? button(info.size ? `Atualizar (${mb(info.size)} MB)` : 'Atualizar', download, { kind: 'primary' })
+    ? button(info.size ? `Atualizar (${mb(info.size)} MB)` : 'Atualizar', () => download(), { kind: 'primary' })
     : button('Baixar na página da versão', openPage, { kind: 'primary' });
 }
 
@@ -163,7 +186,10 @@ export function mountUpdateBanner(parent) {
     // Fechada no meio do download: volta quando terminar, para oferecer o reinício.
     if (dismissed && dismissedPhase === 'downloading' && state.phase === 'downloaded') dismissed = false;
     const update = info?.newer && ['ready', 'downloading', 'downloaded'].includes(state.phase);
-    const show = asked ? !!info?.latest : !dismissed && update;
+    // Sem janela sozinha quando: a pessoa desligou o aviso, o download começou
+    // sozinho (aparece só quando terminar), ou é uma versão escolhida nas Configurações.
+    const quiet = !prefs.updateNotify || (state.auto && state.phase === 'downloading') || !!state.target;
+    const show = asked ? !!info?.latest : !dismissed && update && !quiet;
     if (!show) { if (dialog.open) dialog.close(); return; }
     const items = newsItems(info.latest.notes).map(newsItem);
     clear(dialog,
@@ -210,6 +236,43 @@ export function mountUpdateBanner(parent) {
   render();
 }
 
+/** Grava uma preferência de atualização e aplica na hora. */
+async function savePref(key, value) {
+  const saved = await window.unihub?.setSetting?.(key, value).catch(() => null);
+  setUpdatePrefs(saved || { [key]: value });
+}
+
+const prefSwitch = (key, title, hint) => h('label', { class: 'setting-row' },
+  h('span', { class: 'setting-text' }, h('span', {}, title), h('small', { class: 'muted' }, hint)),
+  h('input', {
+    type: 'checkbox', class: 'switch', checked: !!prefs[key], disabled: !window.unihub?.setSetting,
+    onchange: (e) => savePref(key, e.target.checked),
+  }));
+
+/** Escolher a versão: a mais nova, a em uso ou uma mais antiga (só no app instalado). */
+let chosenVersion = null;
+function versionRow(info) {
+  const versions = info?.versions || [];
+  if (!versions.length) return null;
+  const pick = chosenVersion || info.current;
+  const label = (v) => v.version + (v.version === versions[0].version ? ' (mais recente)' : '')
+    + (v.version === info.current ? ' · em uso' : '');
+  const busy = state.phase === 'downloading' || state.phase === 'checking';
+  return h('div', { class: 'update-version-row' },
+    h('div', { class: 'setting-row' },
+      h('span', { class: 'setting-text' },
+        h('span', {}, 'Versão'),
+        h('small', { class: 'muted' }, 'Para voltar a uma versão anterior, se a nova der problema.')),
+      h('select', {
+        class: 'map-select settings-select update-version-select', 'aria-label': 'Versão', disabled: busy,
+        onchange: (e) => { chosenVersion = e.target.value; changed(); },
+      }, versions.map((v) => h('option', { value: v.version, selected: v.version === pick }, label(v))))),
+    pick !== info.current && !busy && state.phase !== 'downloaded'
+      ? h('div', { class: 'update-settings-actions' },
+        button(`Instalar a ${pick}`, () => download(pick), { kind: 'primary' }))
+      : null);
+}
+
 /** Linhas do grupo "Atualizações" nas Configurações (o mesmo elemento a cada abertura). */
 let settingsRoot = null;
 export function updateSettingsRows() {
@@ -218,21 +281,30 @@ export function updateSettingsRows() {
   settingsRoot = root;
   const render = () => {
     const info = state.info;
+    const busy = state.phase === 'downloading' || state.phase === 'downloaded';
     const status = state.phase === 'checking' ? 'Procurando…'
       : state.phase === 'error' ? `Não foi possível procurar: ${info.error}.`
-        : info?.newer ? `Versão ${info.latest.version} disponível.`
-          : info ? 'Você está na versão mais recente.' : '';
+        : state.target ? `Versão ${state.target} escolhida.`
+          : info?.newer ? `Versão ${info.latest.version} disponível.`
+            : info ? 'Você está na versão mais recente.' : '';
     // Texto em cima e botões embaixo: lado a lado, o texto ficava espremido.
     clear(root,
       h('div', { class: 'setting-text update-settings-text' },
         h('span', {}, info ? `Versão ${info.current}` : 'Versão instalada'),
         h('small', { class: 'muted' }, status || 'Novas versões chegam pelas releases do GitHub.')),
       h('div', { class: 'update-settings-actions' },
-        info?.newer && state.phase !== 'checking'
+        (busy || info?.newer) && state.phase !== 'checking'
           ? actions()
           : button('Procurar atualização', checkForUpdates, { disabled: state.phase === 'checking' }),
         hasNews() && state.phase !== 'checking' ? button('O que mudou', showNews) : null),
-      state.message ? h('small', { class: 'settings-note update-error' }, state.message) : null);
+      state.message ? h('small', { class: 'settings-note update-error' }, state.message) : null,
+      // Opções: baixar sozinho, avisar e escolher a versão (procurar é sempre ao abrir).
+      h('div', { class: 'update-options' },
+        prefSwitch('updateAutoDownload', 'Baixar e instalar sozinho',
+          'A versão nova é baixada em segundo plano e instalada quando você fechar o app.'),
+        prefSwitch('updateNotify', 'Avisar quando houver versão nova',
+          'Mostra a janela com as novidades ao abrir o app.'),
+        versionRow(info)));
   };
   listeners.add(render);
   render();

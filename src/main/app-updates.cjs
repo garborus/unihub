@@ -14,6 +14,9 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const updates = require('./updates.cjs');
 
+// As versões 0.x saem todas como pre-release: entram sempre.
+const withPrerelease = () => true;
+
 const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || '';
 const installedApp = () => app.isPackaged && !portableExe();
 let downloadedUpdate = null; // { version, file } (portátil) ou { version, installer: true }
@@ -24,7 +27,9 @@ function getAutoUpdater() {
     ({ autoUpdater } = require('electron-updater'));
     autoUpdater.autoDownload = false; // só baixa quando a pessoa clica em "Atualizar"
     autoUpdater.autoInstallOnAppQuit = true; // baixada e o app fechou: instala em silêncio
-    autoUpdater.allowPrerelease = true; // as versões 0.x saem como pre-release
+    // A versão é sempre escolhida pelo app (a mais nova, ou uma que a pessoa
+    // escolheu, mesmo mais antiga): o feed aponta para a pasta daquela versão.
+    autoUpdater.allowDowngrade = true;
     autoUpdater.logger = null;
   }
   return autoUpdater;
@@ -40,11 +45,15 @@ function register(ctx) {
         signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) return { current, error: `GitHub respondeu ${res.status}` };
-      const latest = updates.pickLatest(await res.json());
+      const releases = await res.json();
+      const prerelease = withPrerelease();
+      const latest = updates.pickLatest(releases, { prerelease });
       const newer = !!latest && updates.compareVersions(latest.version, current) > 0;
       const installed = installedApp();
       return {
         current, latest, newer,
+        // Versões que a pessoa pode escolher instalar (só no app instalado).
+        versions: installed ? updates.installableVersions(releases, { prerelease }) : [],
         canInstall: newer && (installed ? !!latest.installer : !!latest.asset && !!portableExe()),
         // Tamanho do que vai ser baixado (para o botão "Atualizar (… MB)").
         size: (installed ? latest?.installer?.size : latest?.asset?.size) || 0,
@@ -57,13 +66,32 @@ function register(ctx) {
 
   // Baixa o exe novo para a pasta do exe atual, conferindo tamanho e SHA-256.
   // Versão instalada: o electron-updater baixa o instalador novo e confere o SHA-512.
-  async function downloadInstalledUpdate(event) {
+  // `wanted`: versão escolhida (ex.: uma mais antiga); sem ela, a mais nova.
+  async function downloadInstalledUpdate(event, wanted) {
     const updater = getAutoUpdater();
     try {
+      let target = wanted;
+      if (!target) {
+        const res = await fetch(`https://api.github.com/repos/${updates.REPO}/releases?per_page=20`, {
+          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UnusHub-updater' },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok) throw new Error(`GitHub respondeu ${res.status}`);
+        target = updates.pickLatest(await res.json(), { prerelease: withPrerelease() })?.version;
+        if (!target || updates.compareVersions(target, app.getVersion()) <= 0) {
+          return { ok: false, message: 'Nenhuma versão nova para baixar.' };
+        }
+      }
+      const feed = updates.releaseFilesUrl(target);
+      if (!feed || updates.compareVersions(target, app.getVersion()) === 0) {
+        return { ok: false, message: 'Essa já é a versão em uso.' };
+      }
+      // O latest.yml de cada release aponta para o instalador dela (com SHA-512).
+      updater.setFeedURL({ provider: 'generic', url: feed });
       const check = await updater.checkForUpdates();
       const version = check?.updateInfo?.version;
-      if (!version || updates.compareVersions(version, app.getVersion()) <= 0) {
-        return { ok: false, message: 'Nenhuma versão nova para baixar.' };
+      if (!version || updates.compareVersions(version, target) !== 0) {
+        return { ok: false, message: 'Não foi possível achar essa versão.' };
       }
       const onProgress = (p) => event.sender.send('update:progress', { received: p.transferred, total: p.total });
       updater.on('download-progress', onProgress);
@@ -79,14 +107,16 @@ function register(ctx) {
     }
   }
 
-  ipcMain.handle('update:download', async (event) => {
-    if (installedApp()) return downloadInstalledUpdate(event);
+  ipcMain.handle('update:download', async (event, wanted) => {
+    if (wanted != null && !updates.parseVersion(wanted)) return { ok: false, message: 'Versão inválida.' };
+    if (installedApp()) return downloadInstalledUpdate(event, wanted || null);
+    if (wanted) return { ok: false, message: 'Escolher a versão só funciona no app instalado.' };
     const exe = portableExe();
     if (!exe) return { ok: false, message: 'Rodando pelo código: baixe a versão nova na página.' };
     const res = await fetch(`https://api.github.com/repos/${updates.REPO}/releases?per_page=20`, {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'UnusHub-updater' },
     }).catch(() => null);
-    const latest = res?.ok ? updates.pickLatest(await res.json()) : null;
+    const latest = res?.ok ? updates.pickLatest(await res.json(), { prerelease: withPrerelease() }) : null;
     if (!latest?.asset || updates.compareVersions(latest.version, app.getVersion()) <= 0) {
       return { ok: false, message: 'Nenhuma versão nova para baixar.' };
     }

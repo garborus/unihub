@@ -43,10 +43,32 @@ function compareVersions(a, b) {
  * Devolve { version, notes, page, asset } — asset é o exe portátil, ou null se a
  * release não tiver um (ex.: a 1.0, que vem com instalador).
  */
-function pickLatest(releases) {
-  const candidates = (Array.isArray(releases) ? releases : [])
-    .filter((r) => r && !r.draft && parseVersion(r.tag_name))
+/** Releases válidas (sem rascunhos; sem versões de teste se prerelease = false), da mais nova à mais antiga. */
+function sortedReleases(releases, { prerelease = true } = {}) {
+  return (Array.isArray(releases) ? releases : [])
+    .filter((r) => r && !r.draft && parseVersion(r.tag_name) && (prerelease || !r.prerelease))
     .sort((a, b) => compareVersions(b.tag_name, a.tag_name));
+}
+
+/**
+ * Versões que dá para instalar pelo instalador (para escolher uma versão
+ * específica, inclusive mais antiga): [{ version, prerelease, date }].
+ */
+function installableVersions(releases, { prerelease = true, limit = 10 } = {}) {
+  return sortedReleases(releases, { prerelease })
+    .filter((r) => (r.assets || []).some((a) => INSTALLER_ASSET.test(a.name || '')) && (r.assets || []).some((a) => a.name === 'latest.yml'))
+    .slice(0, limit)
+    .map((r) => ({ version: String(r.tag_name).replace(/^v/, ''), prerelease: !!r.prerelease, date: r.published_at || null }));
+}
+
+/** Endereço da pasta de arquivos de uma versão (onde fica o latest.yml dela). */
+function releaseFilesUrl(version) {
+  if (!parseVersion(version)) return null;
+  return `https://github.com/${REPO}/releases/download/v${String(version).replace(/^v/, '')}`;
+}
+
+function pickLatest(releases, { prerelease = true } = {}) {
+  const candidates = sortedReleases(releases, { prerelease });
   const r = candidates[0];
   if (!r) return null;
   const exe = (r.assets || []).find((a) => PORTABLE_ASSET.test(a.name || ''));
@@ -89,4 +111,4 @@ function swapScript(oldExe, newExe) {
   ].join('\r\n');
 }
 
-module.exports = { REPO, isReleaseUrl, parseVersion, compareVersions, pickLatest, swapScript };
+module.exports = { REPO, isReleaseUrl, parseVersion, compareVersions, pickLatest, installableVersions, releaseFilesUrl, swapScript };
