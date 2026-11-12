@@ -1,5 +1,5 @@
 @echo off
-rem Compila o efeito de áudio (DLL) e a ponte (x64) com o Visual Studio Build Tools.
+rem Compila o efeito de áudio (DLL), a ponte, a ferramenta de som e o instalador (x64) com o Visual Studio Build Tools.
 rem Saída em native\audio-mix\build (fora do git). Precisa do Build Tools com C++ e do SDK do Windows.
 setlocal
 cd /d "%~dp0"
@@ -11,5 +11,8 @@ if not exist build mkdir build
 cl /nologo /O2 /EHsc /W4 /utf-8 /wd4815 /LD /Fo:build\ /Fe:build\UniHubAudioMix.dll efeito\MixApo.cpp efeito\TipoDeAudio.cpp /link /DEF:efeito\MixApo.def audiobaseprocessingobject.lib advapi32.lib ole32.lib || exit /b 1
 cl /nologo /O2 /EHsc /W4 /utf-8 /Fo:build\ /Fe:build\ponte.exe ponte\ponte.cpp || exit /b 1
 cl /nologo /O2 /EHsc /W4 /utf-8 /Fo:build\ /Fe:build\saidas.exe saidas\saidas.cpp /link ole32.lib advapi32.lib || exit /b 1
-del /q build\*.obj build\*.exp build\*.lib 2>nul
+rem Instalador do efeito: sem janela de console, e pede administrador por conta propria (asInvoker).
+rc /nologo /fo build\instalador.res instalador\instalador.rc || exit /b 1
+cl /nologo /O2 /EHsc /W4 /utf-8 /Fo:build\ /Fe:build\efeito-unushub.exe instalador\instalador.cpp build\instalador.res /link /SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup /MANIFEST:EMBED "/MANIFESTUAC:level='asInvoker' uiAccess='false'" advapi32.lib shell32.lib ole32.lib bcrypt.lib || exit /b 1
+del /q build\*.obj build\*.exp build\*.lib build\*.res 2>nul
 echo Compilado em %~dp0build

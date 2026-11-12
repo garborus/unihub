@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 // CLSID do efeito, como texto: é o que fica nas listas de efeitos do microfone no
-// registro. O mesmo desde a primeira versão (ver efeito/MixApo.cpp e instalar.ps1).
+// registro. O mesmo desde a primeira versão (ver efeito/MixApo.cpp e instalador/).
 #define EFEITO_CLSID_TEXTO L"{6B1F3C2A-8E4D-4F7B-9A15-3C2D7E9F0A41}"
 
 #ifndef CANAL_NOME // o teste local troca por um nome Local\, que não exige privilégio

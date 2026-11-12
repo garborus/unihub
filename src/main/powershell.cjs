@@ -34,4 +34,4 @@ function jsonList(stdout) {
   return Array.isArray(value) ? value : [value];
 }
 
-module.exports = { POWERSHELL, runPowerShell, jsonList };
+module.exports = { runPowerShell, jsonList };

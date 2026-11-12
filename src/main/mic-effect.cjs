@@ -1,21 +1,23 @@
 // Efeito no microfone (aba Sons).
 //
 // Única parte com código nativo, pela regra "Código nativo" do README: o Windows
-// só deixa somar som ao microfone por dentro do serviço de áudio. A DLL e a ponte
-// ficam em native/audio-mix (compiladas por compilar.cmd); quem instala é a
-// pessoa, pelo pedido de administrador do Windows. Sem elas, a aba usa o cabo virtual.
+// só deixa somar som ao microfone por dentro do serviço de áudio. A DLL, a ponte e
+// o instalador ficam em native/audio-mix (compilados por compilar.cmd); quem instala
+// é a pessoa, pelo pedido de administrador do Windows. Sem eles, a aba usa o cabo virtual.
 
-const { app, ipcMain } = require('electron');
+const { ipcMain } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { POWERSHELL, runPowerShell, jsonList } = require('./powershell.cjs');
+const { runPowerShell, jsonList } = require('./powershell.cjs');
 const { AUDIO_MIX_DIR, runSoundTool } = require('./native-tools.cjs');
 
 const AUDIO_MIX_DLL = path.join(AUDIO_MIX_DIR, 'build', 'UniHubAudioMix.dll');
-// Onde o instalar.ps1 põe a DLL. O versao.txt (um número) diz a versão do efeito:
+// Instala e remove o efeito (native/audio-mix/instalador), como administrador.
+const AUDIO_MIX_INSTALLER = path.join(AUDIO_MIX_DIR, 'build', 'efeito-unushub.exe');
+// Onde o instalador põe a DLL. O versao.txt (um número) diz a versão do efeito:
 // o que veio no app e o que está instalado; sem o arquivo, é a versão 1.
-// Pasta de programas do Windows, como no instalar.ps1 (o Windows pode não estar no C:).
+// Pasta de programas do Windows, como no instalador (o Windows pode não estar no C:).
 const AUDIO_MIX_INSTALLED_DIR = path.join(process.env.ProgramW6432 || process.env.ProgramFiles || 'C:\\Program Files', 'UniHub', 'audio-mix');
 function effectVersion(dir) {
   try {
@@ -94,35 +96,26 @@ function runBridge(args, input = null) {
 // Volume como a ponte recebe: de 0 a 1 (fora disso ou inválido, volume cheio).
 const bridgeVolume = (volume) => (Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1);
 
-// Roda instalar.ps1 ou remover.ps1 como administrador (o Windows pede a permissão).
+// Roda o instalador do efeito (efeito-unushub.exe), que pede a permissão de
+// administrador ao Windows por conta própria e só termina quando acaba. Sem prazo:
+// a pessoa pode demorar para responder ao pedido.
 // Devolve { ok, cancelled, message }: 1223 = a pessoa recusou o pedido de administrador.
-// params: { Nome: valor } vira -Nome 'valor' (o nome sem aspas, senão vira posicional).
-async function runElevated(script, params) {
-  const log = path.join(app.getPath('temp'), `unihub-audio-mix-${Date.now()}.log`);
-  const q = (text) => String(text).replaceAll("'", "''");
-  const args = Object.entries(params).map(([name, value]) => `-${name} '${q(value)}'`).join(' ');
-  const inner = `try { & '${q(script)}' ${args} *> '${q(log)}' } `
-    + `catch { $_ | Out-File -Encoding utf8 '${q(log)}'; exit 1 }; exit 0`;
-  const encoded = Buffer.from(inner, 'utf16le').toString('base64');
-  // Caminho completo do PowerShell: quem ganha administrador é o do Windows, sempre.
-  const outer = `try { $p = Start-Process '${q(POWERSHELL)}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden `
-    + `-ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','${encoded}'); exit $p.ExitCode } catch { exit 1223 }`;
-  const { err } = await runPowerShell(outer);
-  const code = err ? err.code ?? 1 : 0;
-  let message = '';
-  try {
-    // O *> do PowerShell 5 grava em UTF-16; o Out-File do catch, em UTF-8.
-    const bytes = fs.readFileSync(log);
-    const utf16 = bytes[0] === 0xff && bytes[1] === 0xfe;
-    message = bytes.toString(utf16 ? 'utf16le' : 'utf8').replace(/^\uFEFF/, '').trim();
-    fs.rmSync(log, { force: true });
-  } catch { /* sem log */ }
-  return { ok: code === 0, cancelled: code === 1223, message: message.slice(0, 600) };
+function runInstaller(args) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(AUDIO_MIX_INSTALLER)) {
+      resolve({ ok: false, cancelled: false, message: 'Efeito não compilado (native/audio-mix/compilar.cmd).' });
+      return;
+    }
+    execFile(AUDIO_MIX_INSTALLER, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 1 << 18 }, (err, stdout) => {
+      const code = err ? err.code ?? 1 : 0;
+      resolve({ ok: code === 0, cancelled: code === 1223, message: String(stdout || '').trim().slice(0, 600) });
+    });
+  });
 }
 
 function register() {
   ipcMain.handle('mic-effect:status', async () => {
-    const built = fs.existsSync(AUDIO_MIX_DLL) && fs.existsSync(AUDIO_MIX_BRIDGE);
+    const built = fs.existsSync(AUDIO_MIX_DLL) && fs.existsSync(AUDIO_MIX_BRIDGE) && fs.existsSync(AUDIO_MIX_INSTALLER);
     if (process.platform !== 'win32') return { built: false, mics: [], active: false };
     const { list, arm64, failed } = await readMics();
     const mics = list
@@ -150,10 +143,11 @@ function register() {
   ipcMain.handle('mic-effect:install', (_event, micId) => {
     if (!MIC_ID.test(micId || '')) return { ok: false, message: 'Microfone inválido.' };
     if (!fs.existsSync(AUDIO_MIX_DLL)) return { ok: false, message: 'Efeito não compilado (native/audio-mix/compilar.cmd).' };
-    return runElevated(path.join(AUDIO_MIX_DIR, 'instalar.ps1'), { Microfone: micId, Dll: AUDIO_MIX_DLL });
+    // O instalador usa a DLL que está na pasta dele; só o microfone vai como parâmetro.
+    return runInstaller(['--instalar', micId]);
   });
 
-  ipcMain.handle('mic-effect:remove', () => runElevated(path.join(AUDIO_MIX_DIR, 'remover.ps1'), {}));
+  ipcMain.handle('mic-effect:remove', () => runInstaller(['--remover']));
 
   // Som já pronto pela página: mono, float 32, 48000 Hz, no volume cheio. Quem aplica
   // o volume (0 a 1) é a ponte, para ele poder mudar com o som tocando.

@@ -114,8 +114,10 @@ próprio Windows, sem pacotes extras):
 - `ponte/`: `ponte.exe`, que manda o som do app para o efeito.
 - `saidas/`: `saidas.exe`, que lista os aparelhos de som do Windows, troca o
   padrão, volume e mudo, e lê o estado do efeito em cada microfone.
-- `instalar.ps1` e `remover.ps1`: instalam e removem o efeito, como administrador.
-  Ficam em UTF-8 com BOM, senão o PowerShell 5 lê os acentos errado.
+- `instalador/`: `efeito-unushub.exe`, que instala e remove o efeito. Precisa de
+  administrador e pede a permissão ao Windows por conta própria; não depende do
+  PowerShell, então funciona onde scripts são bloqueados. Guarda uma cópia do que
+  muda no microfone (`backup-*.json`) para o remover desfazer.
 
 O efeito não funciona em microfone de fone Bluetooth (o Windows não roda efeitos
 nele) nem em Windows ARM (a DLL é x64); nesses casos a aba Sons oferece o cabo virtual.

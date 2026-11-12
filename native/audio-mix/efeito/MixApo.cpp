@@ -20,7 +20,7 @@ static const CLSID CLSID_MixApo = { 0x6b1f3c2a, 0x8e4d, 0x4f7b, { 0x9a, 0x15, 0x
 static HMODULE g_modulo = nullptr;
 
 // Diagnóstico: uma linha por evento em %ProgramData%\UniHub\audio-mix.log (a pasta é
-// criada pelo instalar.ps1 com escrita liberada para o serviço de áudio).
+// criada pelo instalador do efeito com escrita liberada para o serviço de áudio).
 // Nunca chamado de dentro do APOProcess, que é tempo real.
 //
 // Desligado no uso normal. Liga só se existir o arquivo %ProgramData%\UniHub\log-ligado
