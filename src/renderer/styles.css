@@ -1264,19 +1264,24 @@ body.sons-reordering, body.sons-reordering * { cursor: grabbing !important; }
 body.menu-left .tab-icon.drawn .sons-icon { width: 18px; height: 18px; color: var(--muted); }
 body.menu-left .tab[aria-selected="true"] .tab-icon.drawn .sons-icon { color: var(--accent); }
 
-/* Aviso de versão nova (shared/updates.js), no canto de baixo da janela. */
-.update-banner {
-  position: fixed; right: 18px; bottom: 18px; z-index: 50; width: min(430px, calc(100vw - 36px));
-  display: flex; flex-direction: column; gap: 12px; padding: 14px 16px;
-  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .35);
-}
-.update-banner[hidden] { display: none; }
-.update-banner-text { display: flex; flex-direction: column; gap: 2px; }
-.update-banner-actions { display: flex; flex-wrap: nowrap; gap: 8px; align-items: center; }
-.update-banner-actions .btn { white-space: nowrap; }
-/* "Agora não" vai para a ponta direita, como ação secundária. */
-.update-banner-actions .btn:last-child:not(:first-child) { margin-left: auto; }
+/* Janela de versão nova (shared/updates.js): cabeçalho com ícone, novidades em
+   quadros (como os de informação dos aparelhos) e botões numa faixa embaixo. */
+.hub-dialog.update-dialog { width: min(500px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
+.update-dialog[open] { display: flex; flex-direction: column; }
+.update-dialog-body { padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; }
+.update-dialog-title { flex: 1; min-width: 0; }
+.update-dialog-title h3 { margin: 0; font-size: 16px; }
+.update-dialog-title p { margin: 2px 0 0; }
+.update-dialog .update-error { margin: 0; }
+.update-news-label { display: block; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.update-news { display: flex; flex-direction: column; gap: 8px; }
+.update-news-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--border); }
+.update-news-item .icon-card-icon { width: 30px; height: 30px; border-radius: 8px; }
+.update-news-item .icon-card-icon svg { width: 16px; height: 16px; }
+.update-news-item strong { display: block; margin-bottom: 2px; }
+.update-news-item span:not(.icon-card-icon) { color: var(--muted); line-height: 1.45; }
+.update-dialog-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--panel-2); }
+.update-dialog-foot .btn { white-space: nowrap; }
 .update-progress { flex: 1; min-width: 160px; height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .update-progress span { display: block; height: 100%; background: var(--accent); transition: width .15s; }
 .update-error { color: var(--err); }

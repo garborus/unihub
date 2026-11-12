@@ -21,6 +21,9 @@ const ICONS = {
   sparkles: ['M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', 'M5 3l.6 1.4L7 5l-1.4.6L5 7l-.6-1.4L3 5l1.4-.6z'],
 };
 
+/** Se existe um desenho com esse nome (as notas de versão podem escolher o ícone). */
+export const hasIcon = (kind) => Object.hasOwn(ICONS, kind);
+
 export function strokeIcon(kind) {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');

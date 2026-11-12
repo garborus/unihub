@@ -1,12 +1,13 @@
 // Aviso de versão nova e o grupo "Atualizações" das Configurações.
 //
 // Ao abrir, o app consulta as releases do GitHub uma vez; com versão nova, mostra
-// um aviso no canto. "Atualizar" baixa a versão nova (instalado: o instalador, pelo
+// uma janela no meio do app com as novidades. "Atualizar" baixa a versão nova (instalado: o instalador, pelo
 // electron-updater; portátil: o exe) e "Reiniciar e atualizar" fecha o app e abre a
 // versão nova. Rodando pelo código, só o link para a página da versão. Lado do
 // processo principal: main.cjs (update:*) e src/main/updates.cjs.
 
 import { h, clear, button } from '../core/dom.js';
+import { strokeIcon, hasIcon } from './icon-card.js';
 
 const state = {
   phase: 'idle', // idle | checking | ready | downloading | downloaded | error
@@ -56,27 +57,94 @@ function actions() {
     : button('Baixar na página da versão', openPage, { kind: 'primary' });
 }
 
-/** Aviso no canto da janela quando há versão nova ("Agora não" esconde até reabrir o app). */
+/** Markdown simples -> texto puro (tira ** e `). */
+const plain = (s) => s.replace(/\*\*/g, '').replace(/`([^`]*)`/g, '$1').trim();
+
+/**
+ * Um item das notas -> { icon, title, text }. Formato: "**Título:** explicação".
+ * O ícone é opcional, num comentário que o GitHub não mostra: "<!-- mic --> **Título:** …".
+ */
+function newsItem(line) {
+  const icon = /^<!--\s*([\w-]+)\s*-->\s*/.exec(line);
+  const rest = icon ? line.slice(icon[0].length) : line;
+  const titled = /^\*\*([^*]+?):?\*\*:?\s*(.*)$/.exec(rest);
+  const kind = icon && hasIcon(icon[1]) ? icon[1] : 'sparkles';
+  return titled
+    // "**Título:** agora funciona…" -> a explicação vira frase própria: "Agora funciona…".
+    ? { icon: kind, title: plain(titled[1]), text: plain(titled[2]).replace(/^\p{Ll}/u, (c) => c.toUpperCase()) }
+    : { icon: kind, title: '', text: plain(rest) };
+}
+
+/**
+ * Itens da lista "Novidades" das notas da release (markdown do GitHub). Sem essa
+ * seção, todos os itens de lista das notas.
+ */
+function newsItems(notes) {
+  const lines = String(notes || '').split(/\r?\n/).map((l) => l.trim());
+  const bullet = (l) => /^[-*] /.test(l);
+  const start = lines.findIndex((l) => /^(\*\*|#+\s*)Novidades/i.test(l));
+  if (start >= 0) {
+    const items = [];
+    for (const l of lines.slice(start + 1)) {
+      if (bullet(l)) items.push(l.slice(2));
+      else if (l && items.length) break;
+    }
+    if (items.length) return items;
+  }
+  return lines.filter(bullet).map((l) => l.slice(2));
+}
+
+/**
+ * Janela no meio do app quando há versão nova, no estilo das Configurações.
+ * "Agora não" (ou Esc) fecha até reabrir o app. Fechada durante o download, o
+ * download continua e a janela volta quando a versão nova estiver baixada.
+ */
 export function mountUpdateBanner(parent) {
-  const banner = h('div', { class: 'update-banner', role: 'status', hidden: true });
-  parent.append(banner);
+  const dialog = h('dialog', { class: 'hub-dialog update-dialog', 'aria-labelledby': 'update-dialog-title' });
+  parent.append(dialog);
   let dismissed = false;
+  let dismissedPhase = '';
+  const close = () => {
+    dismissed = true;
+    dismissedPhase = state.phase;
+    if (dialog.open) dialog.close();
+  };
+  dialog.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   const render = () => {
     const info = state.info;
+    // Fechada no meio do download: volta quando terminar, para oferecer o reinício.
+    if (dismissed && dismissedPhase === 'downloading' && state.phase === 'downloaded') dismissed = false;
     const show = !dismissed && info?.newer && ['ready', 'downloading', 'downloaded'].includes(state.phase);
-    banner.hidden = !show;
-    if (!show) return;
-    clear(banner,
-      h('div', { class: 'update-banner-text' },
-        h('strong', {}, `UnusHub ${info.latest.version} disponível`),
-        h('span', { class: 'muted small' }, state.phase === 'downloaded'
-          ? 'Baixada. Reinicie para usar a versão nova.'
-          : `Você está na ${info.current}.`),
-        state.message ? h('span', { class: 'small update-error' }, state.message) : null),
-      h('div', { class: 'update-banner-actions' },
-        actions(),
-        state.phase === 'downloading' ? null : button('Novidades', openPage),
-        state.phase === 'downloading' ? null : button('Agora não', () => { dismissed = true; render(); })));
+    if (!show) { if (dialog.open) dialog.close(); return; }
+    const items = newsItems(info.latest.notes).map(newsItem);
+    clear(dialog,
+      h('div', { class: 'update-dialog-body' },
+        h('div', { class: 'icon-card-head' },
+          h('span', { class: 'icon-card-icon' }, strokeIcon('download')),
+          h('div', { class: 'update-dialog-title' },
+            h('h3', { id: 'update-dialog-title' }, 'Versão nova do UnusHub'),
+            h('p', { class: 'muted small' }, state.phase === 'downloaded'
+              ? 'Baixada. Reinicie para usar a versão nova.'
+              : `A ${info.latest.version} está pronta. Você está na ${info.current}.`)),
+          h('span', { class: 'pill tool' }, info.latest.version)),
+        state.message ? h('p', { class: 'small update-error' }, state.message) : null,
+        items.length
+          ? h('div', {},
+            h('span', { class: 'update-news-label' }, 'O que mudou'),
+            h('div', { class: 'update-news' }, ...items.map((item) => h('div', { class: 'update-news-item' },
+              h('span', { class: 'icon-card-icon' }, strokeIcon(item.icon)),
+              h('div', {},
+                item.title ? h('strong', {}, item.title) : null,
+                item.text ? h('span', {}, item.text) : null)))))
+          : null),
+      h('div', { class: 'update-dialog-foot' },
+        button(state.phase === 'downloading' ? 'Continuar usando' : 'Agora não', close),
+        actions()));
+    if (!dialog.open) {
+      dialog.showModal();
+      // Sem foco inicial em "Agora não": evita o contorno de foco ao abrir.
+      document.activeElement?.blur();
+    }
   };
   listeners.add(render);
   window.unihub?.onUpdateProgress?.(({ received, total }) => {
