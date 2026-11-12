@@ -46,6 +46,24 @@ function removeHotkey(id) {
   saveSettings();
 }
 
+/**
+ * Tira os atalhos de sons que não estão mais no app (ex.: apagados direto na
+ * pasta), para um som adicionado depois com o mesmo nome não herdar o atalho.
+ * Atalhos que não são de um som (id com "*", como "parar todos") ficam.
+ */
+function keepHotkeysOf(ids) {
+  const keep = new Set(ids);
+  const map = { ...soundHotkeys() };
+  let changed = false;
+  for (const id of Object.keys(map)) {
+    if (!id.includes('*') && !keep.has(id)) { delete map[id]; changed = true; }
+  }
+  if (!changed) return;
+  state.settings = { ...state.settings, soundHotkeys: map };
+  applySoundHotkeys();
+  saveSettings();
+}
+
 /** ctx.getWindow(): a janela do app, que recebe o aviso do atalho apertado. */
 function register(ctx) {
   getWindow = ctx.getWindow;
@@ -95,4 +113,4 @@ function register(ctx) {
   app.on('will-quit', () => globalShortcut.unregisterAll());
 }
 
-module.exports = { register, soundHotkeys, applySoundHotkeys, removeHotkey };
+module.exports = { register, soundHotkeys, applySoundHotkeys, removeHotkey, keepHotkeysOf };

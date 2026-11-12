@@ -128,14 +128,9 @@ ipcMain.handle('settings:set', (_event, key, value) => {
   if (!(key in DEFAULT_SETTINGS) || typeof value !== typeof DEFAULT_SETTINGS[key]) return settingsForPage();
   if (ALLOWED_VALUES[key] && !ALLOWED_VALUES[key].includes(value)) return settingsForPage();
   state.settings = { ...state.settings, [key]: value };
-  if (key === 'autoStart') {
-    applyAutoStart(value);
-    // A bandeja é uma opção de quem inicia com o Windows: desligando um, desliga o outro.
-    if (!value && state.settings.tray) {
-      state.settings = { ...state.settings, tray: false };
-      applyTray(false);
-    }
-  }
+  // A bandeja vale sozinha (fechar a janela deixa o app rodando); junto com
+  // "Iniciar com o Windows", o app também começa só na bandeja.
+  if (key === 'autoStart') applyAutoStart(value);
   if (key === 'tray') applyTray(value);
   if (key === 'language') applyTrayMenu();
   if (key === 'theme') applyTheme();
@@ -224,7 +219,6 @@ app.whenReady().then(() => {
   }
   // O Windows é a fonte da verdade: a entrada pode ter sido removida por fora.
   state.settings.autoStart = app.getLoginItemSettings(loginItem()).openAtLogin;
-  if (!state.settings.autoStart) state.settings.tray = false;
   setupHidPermissions();
   sounds.migrateSoundsFolderName();
   sounds.migrateLegacySounds(); // antes da janela: a aba já lê a pasta nova

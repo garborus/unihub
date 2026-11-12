@@ -471,7 +471,12 @@ const plugin = {
       const result = await promise;
       sounds = Array.isArray(result) ? result : result.sounds;
       if (result.skipped?.length) message = `Ficaram de fora (formato não aceito ou acima de 50 MB): ${result.skipped.join(', ')}.`;
-      for (const id of buffers.keys()) if (!sounds.some((s) => s.id === id)) buffers.delete(id);
+      // Som que saiu do app leva junto o áudio carregado, a duração e o atalho: um
+      // som adicionado depois com o mesmo nome começa do zero.
+      const gone = (id) => !sounds.some((s) => s.id === id);
+      for (const id of buffers.keys()) if (gone(id)) buffers.delete(id);
+      for (const id of durations.keys()) if (gone(id)) durations.delete(id);
+      for (const id of Object.keys(hotkeys)) if (id !== STOP_HOTKEY_ID && gone(id)) delete hotkeys[id];
       render();
       if (!isBackground) loadDurations().catch(() => {});
     }
@@ -693,7 +698,7 @@ const plugin = {
     function hotkeyButton(s) {
       const acc = hotkeys[s.id];
       if (recording === s.id) {
-        return h('button', { class: 'btn sons-hotkey recording', title: 'De 1 a 3 teclas (ex.: Shift + F1). Esc cancela, Backspace tira o atalho', onclick: () => { stopRecording(); render(); } }, 'Aperte as teclas…');
+        return h('button', { class: 'btn sons-hotkey recording', title: 'De 1 a 3 teclas (ex.: Shift + F1). Esc cancela, Backspace tira o atalho', onclick: () => { stopRecording(); render(); } }, h('span', {}, 'Aperte as teclas do atalho'));
       }
       return acc
         ? h('button', { class: 'btn sons-hotkey', title: 'Atalho: clique para trocar', onclick: () => startRecording(s) },
@@ -720,11 +725,12 @@ const plugin = {
               h('span', { class: 'sons-time', translate: 'no' }, clockText()))
             : h('span', { class: 'muted small sons-duration', translate: 'no', title: canMic ? 'Toca no fone e no microfone' : 'Toca só no fone' },
               durations.has(s.id) ? totalText(durations.get(s.id)) : '–:––')),
-        h('div', { class: 'sons-tile-actions' },
+        // Gravando o atalho, só o botão de gravar fica, com a linha inteira para o texto.
+        h('div', { class: 'sons-tile-actions' }, recording === s.id ? hotkeyButton(s) : [
           iconButton(icons.headphones, 'Só no fone', () => play(s, 'ear')),
           iconButton(icons.mic, canMic ? 'Só no microfone' : 'Microfone não configurado', () => play(s, 'mic'), !canMic),
           hotkeyButton(s),
-          iconButton(icons.trash, 'Remover', async () => { if (isPlaying) stopAll(); refreshSounds(api.removeSound(s.id)); })));
+          iconButton(icons.trash, 'Remover', async () => { if (isPlaying) stopAll(); refreshSounds(api.removeSound(s.id)); })]));
     }
 
     // Dois volumes: o que você ouve no fone e o que vai para o microfone.

@@ -588,13 +588,32 @@ function settingsGroup(title, ...rows) {
   return h('section', { class: 'settings-group' }, h('small', { class: 'settings-group-title muted' }, title), ...rows);
 }
 
+/**
+ * Idioma numa lista: "Automático" (segue o Windows, o padrão de quem instala)
+ * sempre em primeiro; os idiomas em ordem alfabética depois. Cada nome aparece
+ * no próprio idioma (English, Español…), para quem não lê o idioma atual achar o seu.
+ */
+function languageSelect(settings, redraw) {
+  const current = settings.language || DEFAULT_LANGUAGE;
+  const options = [{ id: 'auto', name: 'Automático' },
+    ...[...LANGUAGES].sort((a, b) => a.name.localeCompare(b.name))];
+  return h('select', {
+    class: 'map-select settings-select', 'aria-label': 'Idioma',
+    onchange: async (e) => {
+      const id = e.target.value;
+      applyLanguage(await saveSetting('language', id) || { ...settings, language: id });
+      redraw(await window.unihub?.getSettings?.() || settings);
+    },
+  }, options.map(({ id, name }) => h('option', { value: id, selected: id === current, translate: id === 'auto' ? null : 'no' }, name)));
+}
+
 function renderSettings(settings) {
   const redraw = (saved) => renderSettings(saved);
   clear(settingsDialog,
     h('div', { class: 'settings-head' },
-      h('h2', {}, 'Configurações'),
-      h('small', { class: 'muted' }, 'UnusHub')),
+      h('h2', {}, 'Configurações')),
     h('div', { class: 'settings-body' },
+      // Esquerda: o app em si (abrir, ficar aberto, atualizar).
       h('div', { class: 'settings-col' },
         settingsGroup('Inicialização',
           h('label', { class: 'setting-row' },
@@ -602,20 +621,28 @@ function renderSettings(settings) {
               h('span', {}, 'Iniciar com o Windows'),
               h('small', { class: 'muted' }, 'O UnusHub abre sozinho quando você liga o computador.')),
             settingToggle('autoStart', settings, redraw)),
-          // A bandeja é uma opção de quem inicia com o Windows.
-          settings.autoStart ? h('label', { class: 'setting-row sub-setting' },
+          h('label', { class: 'setting-row' },
             h('span', { class: 'setting-text' },
-              h('span', {}, 'Mostrar na bandeja do sistema'),
-              h('small', { class: 'muted' }, 'O UnusHub fica só como ícone perto do relógio, inclusive ao fechar a janela. Para sair, clique com o botão direito no ícone.')),
-            settingToggle('tray', settings, redraw)) : null),
+              h('span', {}, 'Continuar aberto na bandeja'),
+              h('small', { class: 'muted' }, settings.autoStart
+                ? 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos sons continuam funcionando. Ao ligar o computador, já abre só no ícone.'
+                : 'Ao fechar a janela, o UnusHub fica como ícone perto do relógio e os atalhos dos sons continuam funcionando.')),
+            settingToggle('tray', settings, redraw))),
+        settingsGroup('Atualizações', updateSettingsRows())),
+      // Direita: aparência (onde fica o menu, idioma e quais abas aparecem).
+      h('div', { class: 'settings-col' },
         settingsGroup('Posição do menu',
+          h('small', { class: 'muted settings-group-hint' }, 'Onde ficam as abas: em cima da janela ou na lateral.'),
           h('div', { class: 'segmented', role: 'group', 'aria-label': 'Posição do menu' },
             [['top', 'Cabeçalho'], ['left', 'Barra lateral']].map(([value, text]) => h('button', {
               class: 'btn' + (settings.menuPosition === value ? ' primary' : ' secondary'),
               'aria-pressed': String(settings.menuPosition === value),
               onclick: async () => redraw(applyMenuLayout(await saveSetting('menuPosition', value) || settings)),
-            }, text))))),
-      h('div', { class: 'settings-col' },
+            }, text)))),
+        settingsGroup('Idioma', languageSelect(settings, redraw),
+          (settings.language || DEFAULT_LANGUAGE) === 'auto'
+            ? h('small', { class: 'muted settings-note' }, `Seguindo o idioma do Windows: ${languageName(settings.systemLanguage)}.`)
+            : null),
         // Abre a janela Abas.
         settingsGroup('Abas',
           h('div', { class: 'setting-row' },
@@ -625,25 +652,7 @@ function renderSettings(settings) {
             button('Gerenciar abas', () => {
               settingsDialog.close();
               openDialogFromSettings();
-            }))),
-        settingsGroup('Idiomas',
-          h('div', { class: 'segmented', role: 'group', 'aria-label': 'Idiomas' },
-            // "Automático" segue o idioma do Windows; os outros fixam um idioma.
-            [{ id: 'auto', name: 'Automático' }, ...LANGUAGES].map(({ id, name }) => {
-              const chosen = (settings.language || DEFAULT_LANGUAGE) === id;
-              return h('button', {
-                class: 'btn' + (chosen ? ' primary' : ' secondary'),
-                'aria-pressed': String(chosen),
-                onclick: async () => {
-                  applyLanguage(await saveSetting('language', id) || { ...settings, language: id });
-                  redraw(await window.unihub?.getSettings?.() || settings);
-                },
-              }, name);
-            })),
-          settings.language === 'auto'
-            ? h('small', { class: 'muted settings-note' }, `Seguindo o idioma do Windows: ${languageName(settings.systemLanguage)}.`)
-            : null),
-        settingsGroup('Atualizações', updateSettingsRows()))),
+            }))))),
     h('div', { class: 'settings-foot' },
       button('Fechar', () => settingsDialog.close())));
 }

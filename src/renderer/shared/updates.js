@@ -12,7 +12,8 @@ import { strokeIcon, hasIcon } from './icon-card.js';
 const state = {
   phase: 'idle', // idle | checking | ready | downloading | downloaded | error
   info: null, // resposta do update:check
-  progress: 0,
+  received: 0, // bytes já baixados da versão nova
+  total: 0, // tamanho do download (0 = ainda não se sabe)
   message: '',
 };
 const listeners = new Set();
@@ -31,7 +32,8 @@ export async function checkForUpdates() {
 
 async function download() {
   state.phase = 'downloading';
-  state.progress = 0;
+  state.received = 0;
+  state.total = state.info?.size || 0;
   changed();
   const result = await window.unihub.downloadUpdate();
   state.phase = result.ok ? 'downloaded' : 'ready';
@@ -42,13 +44,49 @@ async function download() {
 const openPage = () => window.unihub.openUpdatePage(state.info?.latest?.page);
 const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1).replace('.', ',');
 
+/*
+ * Andamento do download: texto ("Baixando", "62% · 67,7 / 109,6 MB")
+ * e a barra. Cada aviso de andamento só repinta as barras na tela, sem montar a
+ * janela de novo, para a barra deslizar suave em vez de pular.
+ */
+const progressViews = new Set();
+
+function paintProgress(view) {
+  const { received, total } = state;
+  const pct = total ? Math.min(100, Math.round((received / total) * 100)) : 0;
+  const started = received > 0 && total > 0;
+  view.bar.classList.toggle('indeterminate', !started);
+  view.bar.setAttribute('aria-valuenow', String(pct));
+  view.fill.style.width = started ? `${pct}%` : '';
+  view.label.textContent = started ? 'Baixando' : 'Preparando o download';
+  view.detail.textContent = started ? `${pct}% · ${mb(received)} / ${mb(total)} MB` : '';
+}
+
+function progressView() {
+  const view = {
+    label: h('span', {}),
+    detail: h('span', { class: 'muted', translate: 'no' }),
+    fill: h('span', {}),
+  };
+  view.bar = h('div', { class: 'update-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': 'Andamento do download' }, view.fill);
+  view.root = h('div', { class: 'update-progress-block' },
+    h('div', { class: 'update-progress-text' }, view.label, view.detail), view.bar);
+  progressViews.add(view);
+  paintProgress(view);
+  return view.root;
+}
+
+function repaintProgress() {
+  for (const view of progressViews) {
+    if (view.root.isConnected) paintProgress(view);
+    else progressViews.delete(view);
+  }
+}
+
 /** Botões do momento: atualizar, baixar na página, reiniciar. */
 function actions() {
   const info = state.info;
-  if (state.phase === 'downloading') {
-    return h('div', { class: 'update-progress', role: 'progressbar', 'aria-valuenow': Math.round(state.progress * 100) },
-      h('span', { style: `width: ${Math.round(state.progress * 100)}%` }));
-  }
+  if (state.phase === 'downloading') return progressView();
   if (state.phase === 'downloaded') {
     return button('Reiniciar e atualizar', () => window.unihub.installUpdate(), { kind: 'primary' });
   }
@@ -99,13 +137,23 @@ function newsItems(notes) {
  * "Agora não" (ou Esc) fecha até reabrir o app. Fechada durante o download, o
  * download continua e a janela volta quando a versão nova estiver baixada.
  */
+let openNewsDialog = null;
+
+/** Se há novidades para mostrar (o app já consultou as releases). */
+export const hasNews = () => !!state.info?.latest && newsItems(state.info.latest.notes).length > 0;
+
+/** "O que mudou" das Configurações: abre a mesma janela, com ou sem versão nova. */
+export const showNews = () => openNewsDialog?.();
+
 export function mountUpdateBanner(parent) {
   const dialog = h('dialog', { class: 'hub-dialog update-dialog', 'aria-labelledby': 'update-dialog-title' });
   parent.append(dialog);
   let dismissed = false;
   let dismissedPhase = '';
+  let asked = false; // aberta pelo "O que mudou", mesmo sem versão nova
   const close = () => {
     dismissed = true;
+    asked = false;
     dismissedPhase = state.phase;
     if (dialog.open) dialog.close();
   };
@@ -114,18 +162,21 @@ export function mountUpdateBanner(parent) {
     const info = state.info;
     // Fechada no meio do download: volta quando terminar, para oferecer o reinício.
     if (dismissed && dismissedPhase === 'downloading' && state.phase === 'downloaded') dismissed = false;
-    const show = !dismissed && info?.newer && ['ready', 'downloading', 'downloaded'].includes(state.phase);
+    const update = info?.newer && ['ready', 'downloading', 'downloaded'].includes(state.phase);
+    const show = asked ? !!info?.latest : !dismissed && update;
     if (!show) { if (dialog.open) dialog.close(); return; }
     const items = newsItems(info.latest.notes).map(newsItem);
     clear(dialog,
       h('div', { class: 'update-dialog-body' },
         h('div', { class: 'icon-card-head' },
-          h('span', { class: 'icon-card-icon' }, strokeIcon('download')),
+          h('span', { class: 'icon-card-icon' }, strokeIcon(update ? 'download' : 'sparkles')),
           h('div', { class: 'update-dialog-title' },
-            h('h3', { id: 'update-dialog-title' }, 'Versão nova do UnusHub'),
-            h('p', { class: 'muted small' }, state.phase === 'downloaded'
-              ? 'Baixada. Reinicie para usar a versão nova.'
-              : `A ${info.latest.version} está pronta. Você está na ${info.current}.`)),
+            h('h3', { id: 'update-dialog-title' }, update ? 'Versão nova do UnusHub' : 'Novidades do UnusHub'),
+            h('p', { class: 'muted small' }, !update
+              ? `O que mudou na versão ${info.latest.version}.`
+              : state.phase === 'downloaded'
+                ? 'Baixada. Reinicie para usar a versão nova.'
+                : `A ${info.latest.version} está pronta. Você está na ${info.current}.`)),
           h('span', { class: 'pill tool' }, info.latest.version)),
         state.message ? h('p', { class: 'small update-error' }, state.message) : null,
         items.length
@@ -137,19 +188,24 @@ export function mountUpdateBanner(parent) {
                 item.title ? h('strong', {}, item.title) : null,
                 item.text ? h('span', {}, item.text) : null)))))
           : null),
-      h('div', { class: 'update-dialog-foot' },
-        button(state.phase === 'downloading' ? 'Continuar usando' : 'Agora não', close),
-        actions()));
+      // Baixando: o andamento à esquerda, ocupando a faixa, e "Continuar usando" à direita.
+      h('div', { class: 'update-dialog-foot' }, !update
+        ? button('Fechar', close)
+        : state.phase === 'downloading'
+          ? [actions(), button('Continuar usando', close)]
+          : [button('Agora não', close), actions()]));
     if (!dialog.open) {
       dialog.showModal();
       // Sem foco inicial em "Agora não": evita o contorno de foco ao abrir.
       document.activeElement?.blur();
     }
   };
+  openNewsDialog = () => { asked = true; render(); };
   listeners.add(render);
   window.unihub?.onUpdateProgress?.(({ received, total }) => {
-    state.progress = total ? received / total : 0;
-    changed();
+    state.received = received || 0;
+    state.total = total || state.info?.size || 0;
+    repaintProgress();
   });
   render();
 }
@@ -166,14 +222,16 @@ export function updateSettingsRows() {
       : state.phase === 'error' ? `Não foi possível procurar: ${info.error}.`
         : info?.newer ? `Versão ${info.latest.version} disponível.`
           : info ? 'Você está na versão mais recente.' : '';
+    // Texto em cima e botões embaixo: lado a lado, o texto ficava espremido.
     clear(root,
-      h('div', { class: 'setting-row' },
-        h('span', { class: 'setting-text' },
-          h('span', {}, info ? `Versão ${info.current}` : 'Versão instalada'),
-          h('small', { class: 'muted' }, status || 'Novas versões chegam pelas releases do GitHub.')),
+      h('div', { class: 'setting-text update-settings-text' },
+        h('span', {}, info ? `Versão ${info.current}` : 'Versão instalada'),
+        h('small', { class: 'muted' }, status || 'Novas versões chegam pelas releases do GitHub.')),
+      h('div', { class: 'update-settings-actions' },
         info?.newer && state.phase !== 'checking'
           ? actions()
-          : button('Procurar atualização', checkForUpdates, { disabled: state.phase === 'checking' })),
+          : button('Procurar atualização', checkForUpdates, { disabled: state.phase === 'checking' }),
+        hasNews() && state.phase !== 'checking' ? button('O que mudou', showNews) : null),
       state.message ? h('small', { class: 'settings-note update-error' }, state.message) : null);
   };
   listeners.add(render);

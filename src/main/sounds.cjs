@@ -224,7 +224,13 @@ async function changeSoundsFolder(target) {
 function register(ctx) {
   getWindow = ctx.getWindow;
 
-  ipcMain.handle('sounds:list', () => listSounds());
+  // Ao listar, atalhos de sons que sumiram da pasta saem também (só se a pasta
+  // abriu: uma pasta fora do ar, como um pendrive tirado, não apaga atalhos).
+  ipcMain.handle('sounds:list', () => {
+    const sounds = listSounds();
+    if (fs.existsSync(soundsDir())) hotkeys.keepHotkeysOf(sounds.map((s) => s.id));
+    return sounds;
+  });
 
   ipcMain.handle('sounds:add', async () => {
     const result = await dialog.showOpenDialog(getWindow(), {

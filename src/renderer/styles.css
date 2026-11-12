@@ -1008,6 +1008,11 @@ body.home-wide .mapping-page { display: grid; grid-template-columns: minmax(0, 1
 .settings-note { display: block; margin-top: 8px; }
 .settings-group-title { display: block; margin-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
 .settings-group .segmented { margin-top: 4px; }
+.settings-group-hint { display: block; margin: -2px 0 10px; }
+.settings-select { width: 100%; margin-top: 4px; }
+.update-settings-text { display: flex; flex-direction: column; gap: 2px; padding: 4px 0 10px; }
+.update-settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.update-settings-actions .update-progress-block { flex-basis: 100%; }
 .settings-group .row { margin-bottom: 0; }
 .settings-foot { display: flex; justify-content: flex-end; padding: 14px 24px; border-top: 1px solid var(--border); }
 .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
@@ -1189,7 +1194,10 @@ body.sons-reordering, body.sons-reordering * { cursor: grabbing !important; }
 .sons-hotkey { height: 32px; padding: 0 8px; font-size: 12px; display: inline-flex; align-items: center; min-width: 0; max-width: 180px; }
 .sons-hotkey kbd { font: inherit; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sons-hotkey:hover kbd { border-color: var(--accent); }
-.sons-hotkey.recording { color: var(--accent); border-color: var(--accent); white-space: nowrap; }
+/* Gravando: o botão ocupa a linha (no cartão do som os outros botões somem), e
+   o texto, se ainda não couber, termina em "…" em vez de vazar. */
+.sons-hotkey.recording { color: var(--accent); border-color: var(--accent); white-space: nowrap; flex: 1 1 auto; max-width: none; justify-content: center; overflow: hidden; }
+.sons-hotkey.recording span { overflow: hidden; text-overflow: ellipsis; }
 .sons-icon-btn .sons-icon { width: 16px; height: 16px; }
 .sons-icon-btn:last-child:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
 .sons-tile-actions .sons-icon-btn:not(:last-child):hover:not(:disabled) { color: var(--accent); }
@@ -1282,8 +1290,35 @@ body.menu-left .tab[aria-selected="true"] .tab-icon.drawn .sons-icon { color: va
 .update-news-item span:not(.icon-card-icon) { color: var(--muted); line-height: 1.45; }
 .update-dialog-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--panel-2); }
 .update-dialog-foot .btn { white-space: nowrap; }
-.update-progress { flex: 1; min-width: 160px; height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
-.update-progress span { display: block; height: 100%; background: var(--accent); transition: width .15s; }
+/* Andamento do download: texto em cima (o que está acontecendo à esquerda,
+   porcentagem e MB à direita) e a barra embaixo. A barra desliza suave, tem um
+   brilho passando enquanto baixa e, antes do primeiro aviso de andamento, um
+   trecho indo e voltando ("Preparando o download"). */
+.update-progress-block { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.update-progress-text { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+.update-progress-text > span { white-space: nowrap; }
+.update-progress-text > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.update-progress-text .muted { font-size: 12px; font-variant-numeric: tabular-nums; }
+.update-progress { position: relative; height: 8px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--text) 10%, var(--panel)); }
+.update-progress span {
+  position: relative; display: block; height: 100%; width: 0; border-radius: inherit; overflow: hidden;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #fff));
+  transition: width .45s ease-out;
+}
+.update-progress span::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .35), transparent);
+  transform: translateX(-100%); animation: update-shine 1.6s ease-in-out infinite;
+}
+.update-progress.indeterminate span { width: 35%; transition: none; animation: update-indeterminate 1.3s ease-in-out infinite; }
+.update-progress.indeterminate span::after { display: none; }
+@keyframes update-shine { to { transform: translateX(100%); } }
+@keyframes update-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+@media (prefers-reduced-motion: reduce) {
+  .update-progress span { transition: none; }
+  .update-progress span::after { animation: none; display: none; }
+  .update-progress.indeterminate span { animation: none; width: 100%; opacity: .45; }
+}
 .update-error { color: var(--err); }
 
 /* Configurações de áudio dos headsets: cartões com ícone, em duas colunas em
